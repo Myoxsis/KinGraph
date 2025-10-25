@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { extractIndividual } from "../extract";
 import { scoreConfidence } from "../confidence";
+import { highlight } from "../highlight";
 import type { IndividualRecord } from "../schema";
 
 interface FieldRow {
@@ -16,15 +17,6 @@ function escapeHtmlContent(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-}
-
-function escapeHtmlAttribute(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 function highlightJson(json: string): string {
@@ -82,39 +74,8 @@ function formatDate(fragment: DateFragment): string {
   return approx ? `~${formatted}` : formatted;
 }
 
-function wrapProvenance(html: string, provenance: IndividualRecord["provenance"]): string {
-  if (!provenance.length) {
-    return html;
-  }
-
-  const sorted = [...provenance].sort((a, b) => a.start - b.start);
-  let cursor = 0;
-  let output = "";
-
-  for (const entry of sorted) {
-    const safeStart = Math.max(0, Math.min(entry.start, html.length));
-    const safeEnd = Math.max(safeStart, Math.min(entry.end, html.length));
-
-    if (cursor < safeStart) {
-      output += html.slice(cursor, safeStart);
-    }
-
-    const field = escapeHtmlAttribute(entry.field);
-    const snippet = html.slice(safeStart, safeEnd);
-    output += `<mark class="provenance" data-field="${field}">${snippet}</mark>`;
-
-    cursor = safeEnd;
-  }
-
-  if (cursor < html.length) {
-    output += html.slice(cursor);
-  }
-
-  return output;
-}
-
 function buildHighlightDocument(record: IndividualRecord): string {
-  const markedHtml = wrapProvenance(record.sourceHtml, record.provenance);
+  const markedHtml = highlight(record.sourceHtml, record.provenance);
 
   return `<!doctype html>
 <html>
@@ -131,13 +92,13 @@ function buildHighlightDocument(record: IndividualRecord): string {
         background: #ffffff;
         color: #111827;
       }
-      .provenance {
+      mark[data-field] {
         background: rgba(250, 204, 21, 0.4);
         border-radius: 0.25rem;
         padding: 0 0.2em;
         box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.35);
       }
-      .provenance::after {
+      mark[data-field]::after {
         content: attr(data-field);
         display: inline-block;
         margin-left: 0.35rem;
