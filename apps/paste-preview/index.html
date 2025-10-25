@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KinGraph Paste Preview</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #020617;
+        color: #e2e8f0;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: linear-gradient(145deg, #020617, #0f172a);
+        display: flex;
+        justify-content: center;
+        padding: 32px 16px;
+      }
+
+      main {
+        width: min(1100px, 100%);
+        display: grid;
+        gap: 24px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+
+      .layout {
+        display: grid;
+        gap: 24px;
+      }
+
+      @media (min-width: 960px) {
+        .layout {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      label {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        color: #94a3b8;
+      }
+
+      textarea,
+      pre {
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(15, 23, 42, 0.65);
+        box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.1);
+        color: #e2e8f0;
+        padding: 16px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        resize: vertical;
+        min-height: 360px;
+      }
+
+      textarea:focus {
+        outline: 2px solid rgba(14, 165, 233, 0.65);
+        border-color: rgba(56, 189, 248, 0.45);
+      }
+
+      pre {
+        overflow: auto;
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .panel {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .status {
+        font-size: 0.85rem;
+        color: #94a3b8;
+      }
+
+      iframe {
+        width: 100%;
+        height: 300px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 12px;
+        background: #ffffff;
+      }
+
+      button {
+        align-self: flex-start;
+        border: none;
+        border-radius: 999px;
+        padding: 8px 16px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        cursor: pointer;
+        background: #38bdf8;
+        color: #0f172a;
+        transition: background 0.2s ease, transform 0.2s ease;
+      }
+
+      button:hover {
+        background: #0ea5e9;
+        transform: translateY(-1px);
+      }
+
+      button:disabled {
+        background: rgba(148, 163, 184, 0.4);
+        color: rgba(15, 23, 42, 0.7);
+        cursor: not-allowed;
+      }
+
+      .error {
+        border: 1px solid rgba(248, 113, 113, 0.6);
+        background: rgba(248, 113, 113, 0.1);
+        color: rgba(254, 226, 226, 0.95);
+        border-radius: 12px;
+        padding: 16px;
+        font-size: 0.9rem;
+      }
+
+      .confidence-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 8px;
+      }
+
+      .confidence-item {
+        display: grid;
+        gap: 8px;
+      }
+
+      .confidence-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        color: #94a3b8;
+      }
+
+      .confidence-bar {
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.3);
+        overflow: hidden;
+      }
+
+      .confidence-bar span {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, #4ade80, #22c55e);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>KinGraph Paste Preview</h1>
+        <p class="status">Paste HTML on the left to extract and review structured data.</p>
+      </header>
+      <div class="layout">
+        <section class="panel">
+          <div>
+            <label for="html-input">Source HTML</label>
+            <textarea id="html-input" placeholder="Paste HTML here..."></textarea>
+          </div>
+          <button id="toggle-sources" type="button" disabled>Highlight sources</button>
+          <iframe id="source-preview" title="Provenance preview" hidden></iframe>
+        </section>
+        <section class="panel">
+          <div>
+            <label for="json-output">Structured record</label>
+            <pre id="json-output">Paste HTML to see extracted fields.</pre>
+          </div>
+          <div id="error" class="error" hidden></div>
+          <div>
+            <label>Field confidence</label>
+            <div id="confidence" class="confidence-list"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
