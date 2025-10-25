@@ -160,86 +160,106 @@ export function initializeTreePage(): void {
       return profile;
     }
 
-    const grid = document.createElement("div");
-    grid.className = "tree-grid";
-
-    const parentsColumn = document.createElement("div");
-    parentsColumn.className = "tree-generation";
-    const parentsHeading = document.createElement("h3");
-    parentsHeading.textContent = "Parents";
-    parentsColumn.appendChild(parentsHeading);
+    const tree = document.createElement("div");
+    tree.className = "genealogy-tree";
 
     const fatherName = mergedProfile.parents.father;
     const motherName = mergedProfile.parents.mother;
+    const hasParents = Boolean(fatherName || motherName);
+    const hasChildren = mergedProfile.children.length > 0;
 
-    if (!fatherName && !motherName) {
-      const emptyParents = document.createElement("span");
-      emptyParents.className = "tree-empty";
-      emptyParents.textContent = "No parents recorded.";
-      parentsColumn.appendChild(emptyParents);
-    } else {
+    const parentsLevel = document.createElement("section");
+    parentsLevel.className = "genealogy-level genealogy-parents";
+    parentsLevel.appendChild(createTreeHeading("Parents"));
+
+    if (hasParents) {
+      const branches = document.createElement("div");
+      branches.className = "genealogy-branches";
+      parentsLevel.classList.add("genealogy-level--bottom-line");
+
       if (fatherName) {
         const fatherProfile = resolveProfileByName(fatherName);
-        parentsColumn.appendChild(
-          createTreePersonElement(
-            fatherName,
-            fatherProfile ? formatLifespan(fatherProfile) : "",
-            buildDetails(fatherProfile),
+        branches.appendChild(
+          createGenealogyBranch(
+            createTreePersonElement(
+              fatherName,
+              fatherProfile ? formatLifespan(fatherProfile) : "",
+              buildDetails(fatherProfile),
+            ),
+            ["down"],
           ),
         );
       }
 
       if (motherName) {
         const motherProfile = resolveProfileByName(motherName);
-        parentsColumn.appendChild(
-          createTreePersonElement(
-            motherName,
-            motherProfile ? formatLifespan(motherProfile) : "",
-            buildDetails(motherProfile),
+        branches.appendChild(
+          createGenealogyBranch(
+            createTreePersonElement(
+              motherName,
+              motherProfile ? formatLifespan(motherProfile) : "",
+              buildDetails(motherProfile),
+            ),
+            ["down"],
           ),
         );
       }
+
+      parentsLevel.appendChild(branches);
+    } else {
+      parentsLevel.appendChild(createTreeEmptyMessage("No parents recorded."));
     }
 
-    const rootColumn = document.createElement("div");
-    rootColumn.className = "tree-generation";
-    const rootHeading = document.createElement("h3");
-    rootHeading.textContent = "Individual";
-    rootColumn.appendChild(rootHeading);
-    rootColumn.appendChild(
-      createTreePersonElement(
-        individual.name,
-        formatLifespan(mergedProfile),
-        buildDetails(mergedProfile, true),
+    const rootLevel = document.createElement("section");
+    rootLevel.className = "genealogy-level genealogy-root";
+    rootLevel.appendChild(createTreeHeading("Individual"));
+    const rootBranches = document.createElement("div");
+    rootBranches.className = "genealogy-branches genealogy-branches--single";
+    rootBranches.appendChild(
+      createGenealogyBranch(
+        createTreePersonElement(
+          individual.name,
+          formatLifespan(mergedProfile),
+          buildDetails(mergedProfile, true),
+        ),
+        [
+          ...(hasParents ? ["up"] : []),
+          ...(hasChildren ? ["down"] : []),
+        ],
       ),
     );
+    rootLevel.appendChild(rootBranches);
 
-    const childrenColumn = document.createElement("div");
-    childrenColumn.className = "tree-generation";
-    const childrenHeading = document.createElement("h3");
-    childrenHeading.textContent = "Children";
-    childrenColumn.appendChild(childrenHeading);
+    const childrenLevel = document.createElement("section");
+    childrenLevel.className = "genealogy-level genealogy-children";
+    childrenLevel.appendChild(createTreeHeading("Children"));
 
-    if (!mergedProfile.children.length) {
-      const emptyChildren = document.createElement("span");
-      emptyChildren.className = "tree-empty";
-      emptyChildren.textContent = "No children recorded.";
-      childrenColumn.appendChild(emptyChildren);
-    } else {
+    if (hasChildren) {
+      const branches = document.createElement("div");
+      branches.className = "genealogy-branches";
+      childrenLevel.classList.add("genealogy-level--top-line");
+
       for (const childName of mergedProfile.children) {
         const childProfile = resolveProfileByName(childName);
-        childrenColumn.appendChild(
-          createTreePersonElement(
-            childName,
-            childProfile ? formatLifespan(childProfile) : "",
-            buildDetails(childProfile),
+        branches.appendChild(
+          createGenealogyBranch(
+            createTreePersonElement(
+              childName,
+              childProfile ? formatLifespan(childProfile) : "",
+              buildDetails(childProfile),
+            ),
+            ["up"],
           ),
         );
       }
+
+      childrenLevel.appendChild(branches);
+    } else {
+      childrenLevel.appendChild(createTreeEmptyMessage("No children recorded."));
     }
 
-    grid.append(parentsColumn, rootColumn, childrenColumn);
-    container.appendChild(grid);
+    tree.append(parentsLevel, rootLevel, childrenLevel);
+    container.appendChild(tree);
   }
 
   function buildDetails(profile: IndividualProfile | null, showRelationships = false): string[] {
@@ -540,4 +560,45 @@ function getTreeElements(): TreeElements | null {
   }
 
   return { container, select, searchInput, clearButton };
+}
+
+function createGenealogyBranch(
+  content: HTMLElement,
+  connectors: Array<"up" | "down">,
+): HTMLDivElement {
+  const branch = document.createElement("div");
+  branch.className = "genealogy-branch";
+
+  if (connectors.includes("up")) {
+    branch.appendChild(createConnector("up"));
+  }
+
+  branch.appendChild(content);
+
+  if (connectors.includes("down")) {
+    branch.appendChild(createConnector("down"));
+  }
+
+  return branch;
+}
+
+function createConnector(direction: "up" | "down"): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.className = `genealogy-connector genealogy-connector-${direction}`;
+  span.setAttribute("aria-hidden", "true");
+  return span;
+}
+
+function createTreeHeading(label: string): HTMLHeadingElement {
+  const heading = document.createElement("h3");
+  heading.className = "genealogy-heading";
+  heading.textContent = label;
+  return heading;
+}
+
+function createTreeEmptyMessage(message: string): HTMLSpanElement {
+  const empty = document.createElement("span");
+  empty.className = "tree-empty";
+  empty.textContent = message;
+  return empty;
 }
