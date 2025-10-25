@@ -45,6 +45,29 @@
             </div>
           </form>
         </section>
+        <section class="panel">
+          <header>
+            <h2>Individual details</h2>
+          </header>
+          <p id="edit-individual-empty" class="supporting-text">
+            Select an individual to view and edit their saved details.
+          </p>
+          <form id="edit-individual-form" class="choice">
+            <div class="control">
+              <label for="edit-individual-name">Display name</label>
+              <input type="text" id="edit-individual-name" required />
+            </div>
+            <div class="control">
+              <label for="edit-individual-notes">Notes</label>
+              <textarea id="edit-individual-notes" rows="4" placeholder="Add context or reminders"></textarea>
+            </div>
+            <div class="card-actions">
+              <button type="submit" id="save-individual-button">Save changes</button>
+              <button type="button" id="clear-edit-selection" class="button-secondary">Clear selection</button>
+              <span id="edit-individual-feedback" class="supporting-text" aria-live="polite"></span>
+            </div>
+          </form>
+        </section>
       </section>
     </main>
 

@@ -319,6 +319,22 @@ button:hover {
   background: rgba(15, 23, 42, 0.55);
 }
 
+.card[role="button"] {
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card[role="button"]:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.card.is-selected {
+  border-color: rgba(56, 189, 248, 0.65);
+  background: rgba(14, 165, 233, 0.2);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+}
+
 .card-title {
   margin: 0;
   font-size: 1rem;

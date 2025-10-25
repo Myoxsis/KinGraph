@@ -1,11 +1,23 @@
-import { createIndividual, getState, renameIndividual, subscribe } from "@/storage";
+import {
+  createIndividual,
+  getState,
+  subscribe,
+  updateIndividual,
+} from "@/storage";
 import { formatTimestamp } from "./shared/utils";
 
 interface IndividualsElements {
   list: HTMLDivElement;
-  form: HTMLFormElement;
-  nameInput: HTMLInputElement;
-  feedback: HTMLSpanElement | null;
+  createForm: HTMLFormElement;
+  createNameInput: HTMLInputElement;
+  createFeedback: HTMLSpanElement | null;
+  editForm: HTMLFormElement;
+  editNameInput: HTMLInputElement;
+  editNotesInput: HTMLTextAreaElement;
+  editSaveButton: HTMLButtonElement;
+  editFeedback: HTMLSpanElement | null;
+  editEmptyState: HTMLParagraphElement | null;
+  clearSelectionButton: HTMLButtonElement | null;
 }
 
 export function initializeIndividualsPage(): void {
@@ -15,9 +27,30 @@ export function initializeIndividualsPage(): void {
     return;
   }
 
-  const { list, form, nameInput, feedback } = elements;
+  const {
+    list,
+    createForm,
+    createNameInput,
+    createFeedback,
+    editForm,
+    editNameInput,
+    editNotesInput,
+    editSaveButton,
+    editFeedback,
+    editEmptyState,
+    clearSelectionButton,
+  } = elements;
 
   let latestState = getState();
+  let selectedIndividualId: string | null = null;
+
+  function getSelectedIndividual(): typeof latestState.individuals[number] | null {
+    if (!selectedIndividualId) {
+      return null;
+    }
+
+    return latestState.individuals.find((individual) => individual.id === selectedIndividualId) ?? null;
+  }
 
   function renderIndividuals(): void {
     if (!latestState.individuals.length) {
@@ -33,6 +66,15 @@ export function initializeIndividualsPage(): void {
     for (const individual of individuals) {
       const card = document.createElement("article");
       card.className = "card";
+      card.dataset.individualId = individual.id;
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-label", `Edit details for ${individual.name}`);
+      const isSelected = individual.id === selectedIndividualId;
+      card.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      if (isSelected) {
+        card.classList.add("is-selected");
+      }
 
       const header = document.createElement("header");
       const title = document.createElement("h3");
@@ -68,16 +110,23 @@ export function initializeIndividualsPage(): void {
         card.appendChild(listElement);
       }
 
+      if (individual.notes.trim()) {
+        const notes = document.createElement("p");
+        notes.className = "supporting-text";
+        notes.textContent = `Notes: ${individual.notes}`;
+        card.appendChild(notes);
+      }
+
       const actions = document.createElement("div");
       actions.className = "card-actions";
 
-      const renameButton = document.createElement("button");
-      renameButton.type = "button";
-      renameButton.textContent = "Rename";
-      renameButton.dataset.action = "rename-individual";
-      renameButton.dataset.individualId = individual.id;
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.textContent = "Edit details";
+      editButton.dataset.action = "edit-individual";
+      editButton.dataset.individualId = individual.id;
 
-      actions.appendChild(renameButton);
+      actions.appendChild(editButton);
       card.appendChild(actions);
 
       fragment.appendChild(card);
@@ -86,101 +135,239 @@ export function initializeIndividualsPage(): void {
     list.replaceChildren(fragment);
   }
 
-  async function handleIndividualAction(event: MouseEvent): Promise<void> {
-    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
+  function focusEditForm(): void {
+    window.requestAnimationFrame(() => {
+      if (!editNameInput.disabled) {
+        editNameInput.focus();
+        editNameInput.select();
+      }
+    });
+  }
 
-    if (!button) {
+  function selectIndividual(individualId: string | null): void {
+    let nextSelection: string | null = null;
+
+    if (individualId) {
+      const exists = latestState.individuals.some((item) => item.id === individualId);
+      nextSelection = exists ? individualId : null;
+    }
+
+    const changed = nextSelection !== selectedIndividualId;
+    selectedIndividualId = nextSelection;
+
+    if (changed && editFeedback) {
+      editFeedback.textContent = "";
+    }
+
+    renderIndividuals();
+    renderSelectedIndividual();
+  }
+
+  function renderSelectedIndividual(): void {
+    const selected = getSelectedIndividual();
+    const hasSelection = selected !== null;
+
+    editNameInput.disabled = !hasSelection;
+    editNotesInput.disabled = !hasSelection;
+    editSaveButton.disabled = !hasSelection;
+    if (clearSelectionButton) {
+      clearSelectionButton.disabled = !hasSelection;
+    }
+
+    if (!selected) {
+      if (editEmptyState) {
+        editEmptyState.hidden = false;
+      }
+      editForm.reset();
       return;
     }
 
+    if (editEmptyState) {
+      editEmptyState.hidden = true;
+    }
+
+    editNameInput.value = selected.name;
+    editNotesInput.value = selected.notes;
+  }
+
+  function handleIndividualAction(button: HTMLButtonElement): void {
     const individualId = button.dataset.individualId;
 
     if (!individualId) {
       return;
     }
 
-    if (button.dataset.action === "rename-individual") {
-      const individual = latestState.individuals.find((item) => item.id === individualId);
-
-      if (!individual) {
-        return;
-      }
-
-      const nextName = window.prompt("Rename individual", individual.name);
-
-      if (nextName) {
-        const trimmedName = nextName.trim();
-
-        if (!trimmedName || trimmedName === individual.name) {
-          return;
-        }
-
-        try {
-          await renameIndividual(individualId, trimmedName);
-          if (feedback) {
-            feedback.textContent = `Renamed individual to ${trimmedName}.`;
-          }
-        } catch (error) {
-          console.error("Failed to rename individual", error);
-          if (feedback) {
-            feedback.textContent = "Unable to rename individual.";
-          }
-        }
-      }
+    if (button.dataset.action === "edit-individual") {
+      selectIndividual(individualId);
+      focusEditForm();
     }
   }
 
   list.addEventListener("click", (event) => {
-    void handleIndividualAction(event as MouseEvent);
+    const target = event.target as HTMLElement;
+    const button = target.closest<HTMLButtonElement>("button[data-action]");
+
+    if (button) {
+      handleIndividualAction(button);
+      return;
+    }
+
+    const card = target.closest<HTMLElement>("[data-individual-id]");
+
+    if (card?.dataset.individualId) {
+      selectIndividual(card.dataset.individualId);
+      focusEditForm();
+    }
   });
 
-  form.addEventListener("submit", async (event) => {
+  list.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    const card = target.closest<HTMLElement>("[data-individual-id]");
+
+    if (card?.dataset.individualId) {
+      event.preventDefault();
+      selectIndividual(card.dataset.individualId);
+      focusEditForm();
+    }
+  });
+
+  createForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const name = nameInput.value.trim();
+    const name = createNameInput.value.trim();
 
     if (!name) {
-      nameInput.focus();
+      createNameInput.focus();
       return;
     }
 
     try {
       const individual = await createIndividual(name);
-      nameInput.value = "";
-      if (feedback) {
-        feedback.textContent = `Created individual ${individual.name}.`;
+      createNameInput.value = "";
+      if (createFeedback) {
+        createFeedback.textContent = `Created individual ${individual.name}.`;
       }
+      selectIndividual(individual.id);
+      focusEditForm();
     } catch (error) {
       console.error("Failed to create individual", error);
-      if (feedback) {
-        feedback.textContent = "Unable to create individual.";
+      if (createFeedback) {
+        createFeedback.textContent = "Unable to create individual.";
       }
     }
   });
 
+  editForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const selected = getSelectedIndividual();
+
+    if (!selected) {
+      return;
+    }
+
+    const name = editNameInput.value.trim();
+    const notes = editNotesInput.value.trim();
+
+    if (!name) {
+      editNameInput.focus();
+      if (editFeedback) {
+        editFeedback.textContent = "Provide a display name before saving.";
+      }
+      return;
+    }
+
+    if (name === selected.name && notes === selected.notes) {
+      if (editFeedback) {
+        editFeedback.textContent = "No changes to save.";
+      }
+      return;
+    }
+
+    try {
+      const updated = await updateIndividual({ id: selected.id, name, notes });
+
+      if (!updated) {
+        if (editFeedback) {
+          editFeedback.textContent = "Selected individual no longer exists.";
+        }
+        selectIndividual(null);
+        return;
+      }
+
+      if (editFeedback) {
+        editFeedback.textContent = "Saved individual details.";
+      }
+    } catch (error) {
+      console.error("Failed to update individual", error);
+      if (editFeedback) {
+        editFeedback.textContent = "Unable to update individual.";
+      }
+    }
+  });
+
+  if (clearSelectionButton) {
+    clearSelectionButton.addEventListener("click", () => {
+      selectIndividual(null);
+      if (editFeedback) {
+        editFeedback.textContent = "";
+      }
+    });
+  }
+
   subscribe((state) => {
     latestState = state;
+    if (selectedIndividualId && !state.individuals.some((item) => item.id === selectedIndividualId)) {
+      selectedIndividualId = null;
+    }
     renderIndividuals();
+    renderSelectedIndividual();
   });
 
   renderIndividuals();
+  renderSelectedIndividual();
 }
 
 function getIndividualsElements(): IndividualsElements | null {
   const list = document.getElementById("individuals-list");
-  const form = document.getElementById("create-individual-form");
-  const nameInput = document.getElementById("create-individual-name");
-  const feedback = document.getElementById("individuals-feedback");
+  const createForm = document.getElementById("create-individual-form");
+  const createNameInput = document.getElementById("create-individual-name");
+  const createFeedback = document.getElementById("individuals-feedback");
+  const editForm = document.getElementById("edit-individual-form");
+  const editNameInput = document.getElementById("edit-individual-name");
+  const editNotesInput = document.getElementById("edit-individual-notes");
+  const editFeedback = document.getElementById("edit-individual-feedback");
+  const editEmptyState = document.getElementById("edit-individual-empty");
+  const editSaveButton = document.getElementById("save-individual-button");
+  const clearSelectionButton = document.getElementById("clear-edit-selection");
 
   if (
-    !(list instanceof HTMLDivElement && form instanceof HTMLFormElement && nameInput instanceof HTMLInputElement)
+    !(
+      list instanceof HTMLDivElement &&
+      createForm instanceof HTMLFormElement &&
+      createNameInput instanceof HTMLInputElement &&
+      editForm instanceof HTMLFormElement &&
+      editNameInput instanceof HTMLInputElement &&
+      editNotesInput instanceof HTMLTextAreaElement &&
+      editSaveButton instanceof HTMLButtonElement
+    )
   ) {
     return null;
   }
 
   return {
     list,
-    form,
-    nameInput,
-    feedback: feedback instanceof HTMLSpanElement ? feedback : null,
+    createForm,
+    createNameInput,
+    createFeedback: createFeedback instanceof HTMLSpanElement ? createFeedback : null,
+    editForm,
+    editNameInput,
+    editNotesInput,
+    editSaveButton,
+    editFeedback: editFeedback instanceof HTMLSpanElement ? editFeedback : null,
+    editEmptyState: editEmptyState instanceof HTMLParagraphElement ? editEmptyState : null,
+    clearSelectionButton: clearSelectionButton instanceof HTMLButtonElement ? clearSelectionButton : null,
   };
 }
