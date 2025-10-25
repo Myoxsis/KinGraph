@@ -17,19 +17,17 @@ KinGraph is an entity resolution and family linkage engine for genealogical data
 ### Installation
 1. Install dependencies:
    ```bash
-   pnpm install
-   # or
    npm install
    ```
 2. Build the packages:
    ```bash
-   pnpm build
+   npm run build
    ```
 
 ### Running Tests
 Execute the unit test suite with:
 ```bash
-pnpm test
+npm test
 ```
 
 ## Project Structure
