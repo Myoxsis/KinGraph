@@ -34,7 +34,7 @@ export interface StoredRecord {
   record: IndividualRecord;
 }
 
-interface PersistedState {
+export interface PersistedState {
   individuals: StoredIndividual[];
   records: StoredRecord[];
   professions: StoredProfessionDefinition[];
@@ -43,36 +43,215 @@ interface PersistedState {
 
 type StateListener = (state: PersistedState) => void;
 
-const STORAGE_KEY = "kingraph.app.data.v1";
+const DB_NAME = "kingraph.app.data";
+const DB_VERSION = 1;
+const STORE_NAMES = ["individuals", "records", "professions", "places"] as const;
+type StoreName = (typeof STORE_NAMES)[number];
 
 const defaultState: PersistedState = createDefaultState();
-
-let state: PersistedState = loadState();
+let state: PersistedState = cloneState(defaultState);
 const listeners = new Set<StateListener>();
 
-function loadState(): PersistedState {
-  if (typeof window === "undefined" || typeof window.localStorage === "undefined") {
-    return cloneState(defaultState);
+let databasePromise: Promise<IDBDatabase | null> | null = null;
+
+const initialization = initialize();
+export const ready: Promise<void> = initialization.then(() => undefined);
+
+function supportsIndexedDb(): boolean {
+  return typeof indexedDB !== "undefined";
+}
+
+function openDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      for (const store of STORE_NAMES) {
+        if (!db.objectStoreNames.contains(store)) {
+          db.createObjectStore(store, { keyPath: "id" });
+        }
+      }
+    };
+
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        databasePromise = null;
+      };
+      resolve(db);
+    };
+
+    request.onerror = () => {
+      reject(request.error ?? new Error("Failed to open KinGraph database."));
+    };
+  });
+}
+
+async function getDatabase(): Promise<IDBDatabase | null> {
+  if (!supportsIndexedDb()) {
+    return null;
   }
+
+  if (!databasePromise) {
+    databasePromise = openDatabase().catch((error) => {
+      console.warn("Failed to open KinGraph database:", error);
+      databasePromise = null;
+      return null;
+    });
+  }
+
+  return databasePromise;
+}
+
+function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed."));
+  });
+}
+
+function transactionDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("IndexedDB transaction failed."));
+    tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted."));
+  });
+}
+
+async function writeToDatabase(next: PersistedState): Promise<void> {
+  const db = await getDatabase();
+  if (!db) {
+    return;
+  }
+
+  const tx = db.transaction(STORE_NAMES as readonly StoreName[], "readwrite");
+  const individualsStore = tx.objectStore("individuals");
+  const recordsStore = tx.objectStore("records");
+  const professionsStore = tx.objectStore("professions");
+  const placesStore = tx.objectStore("places");
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-
-    if (!raw) {
-      return cloneState(defaultState);
+    await requestToPromise(individualsStore.clear());
+    for (const individual of next.individuals) {
+      await requestToPromise(individualsStore.put(individual));
     }
 
-    const parsed = JSON.parse(raw) as Partial<PersistedState>;
-
-    if (!parsed || typeof parsed !== "object") {
-      return cloneState(defaultState);
+    await requestToPromise(recordsStore.clear());
+    for (const record of next.records) {
+      await requestToPromise(recordsStore.put(record));
     }
 
-    return normalizeState(parsed);
+    await requestToPromise(professionsStore.clear());
+    for (const profession of next.professions) {
+      await requestToPromise(professionsStore.put(profession));
+    }
+
+    await requestToPromise(placesStore.clear());
+    for (const place of next.places) {
+      await requestToPromise(placesStore.put(place));
+    }
+
+    await transactionDone(tx);
   } catch (error) {
-    console.warn("Failed to read KinGraph storage:", error);
-    return cloneState(defaultState);
+    try {
+      tx.abort();
+    } catch {
+      // ignore abort errors
+    }
+    throw error;
   }
+}
+
+async function loadPersistedState(): Promise<Partial<PersistedState>> {
+  const db = await getDatabase();
+  if (!db) {
+    return {};
+  }
+
+  const tx = db.transaction(STORE_NAMES as readonly StoreName[], "readonly");
+  const individualsStore = tx.objectStore("individuals");
+  const recordsStore = tx.objectStore("records");
+  const professionsStore = tx.objectStore("professions");
+  const placesStore = tx.objectStore("places");
+
+  const completion = transactionDone(tx);
+  const [individuals, records, professions, places] = await Promise.all([
+    requestToPromise(individualsStore.getAll()),
+    requestToPromise(recordsStore.getAll()),
+    requestToPromise(professionsStore.getAll()),
+    requestToPromise(placesStore.getAll()),
+  ]);
+  await completion;
+
+  const persisted: Partial<PersistedState> = {};
+  if (individuals.length) {
+    persisted.individuals = individuals as StoredIndividual[];
+  }
+  if (records.length) {
+    persisted.records = records as StoredRecord[];
+  }
+  if (professions.length) {
+    persisted.professions = professions as StoredProfessionDefinition[];
+  }
+  if (places.length) {
+    persisted.places = places as StoredPlaceDefinition[];
+  }
+
+  return persisted;
+}
+
+async function initialize(): Promise<void> {
+  try {
+    const persisted = await loadPersistedState();
+    const normalized = normalizeState(persisted);
+    const seededProfessions = !("professions" in persisted);
+    const seededPlaces = !("places" in persisted);
+    state = normalized;
+
+    if (seededProfessions || seededPlaces) {
+      try {
+        await writeToDatabase(state);
+      } catch (error) {
+        console.warn("Failed to seed KinGraph database:", error);
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to initialize KinGraph storage:", error);
+    state = cloneState(defaultState);
+    try {
+      await writeToDatabase(state);
+    } catch (persistError) {
+      console.warn("Failed to persist default KinGraph state:", persistError);
+    }
+  }
+}
+
+function cloneRecord(record: IndividualRecord): IndividualRecord {
+  if (typeof structuredClone === "function") {
+    return structuredClone(record);
+  }
+
+  return JSON.parse(JSON.stringify(record)) as IndividualRecord;
+}
+
+function cloneState(value: PersistedState): PersistedState {
+  return {
+    individuals: value.individuals.map((individual) => ({ ...individual })),
+    records: value.records.map((record) => ({
+      ...record,
+      record: cloneRecord(record.record),
+    })),
+    professions: value.professions.map((profession) => ({
+      ...profession,
+      aliases: [...profession.aliases],
+    })),
+    places: value.places.map((place) => ({
+      ...place,
+      aliases: [...place.aliases],
+    })),
+  };
 }
 
 function normalizeState(value: Partial<PersistedState>): PersistedState {
@@ -86,7 +265,7 @@ function normalizeState(value: Partial<PersistedState>): PersistedState {
   const normalized: PersistedState = {
     individuals: individuals
       .filter((item): item is StoredIndividual =>
-        Boolean(item && typeof item.id === "string" && typeof item.name === "string")
+        Boolean(item && typeof item.id === "string" && typeof item.name === "string"),
       )
       .map((item) => ({
         id: item.id,
@@ -96,7 +275,7 @@ function normalizeState(value: Partial<PersistedState>): PersistedState {
       })),
     records: records
       .filter((item): item is StoredRecord =>
-        Boolean(item && typeof item.id === "string" && typeof item.individualId === "string" && item.record)
+        Boolean(item && typeof item.id === "string" && typeof item.individualId === "string" && item.record),
       )
       .map((item) => ({
         id: item.id,
@@ -107,7 +286,7 @@ function normalizeState(value: Partial<PersistedState>): PersistedState {
       })),
     professions: professions
       .filter((item): item is StoredProfessionDefinition =>
-        Boolean(item && typeof item.id === "string" && typeof item.label === "string")
+        Boolean(item && typeof item.id === "string" && typeof item.label === "string"),
       )
       .map((item) => ({
         id: item.id,
@@ -118,7 +297,7 @@ function normalizeState(value: Partial<PersistedState>): PersistedState {
       })),
     places: places
       .filter((item): item is StoredPlaceDefinition =>
-        Boolean(item && typeof item.id === "string" && typeof item.label === "string")
+        Boolean(item && typeof item.id === "string" && typeof item.label === "string"),
       )
       .map((item) => ({
         id: item.id,
@@ -141,52 +320,13 @@ function normalizeState(value: Partial<PersistedState>): PersistedState {
   return normalized;
 }
 
-function cloneState(value: PersistedState): PersistedState {
+function createDefaultState(): PersistedState {
   return {
-    individuals: value.individuals.map((individual) => ({ ...individual })),
-    records: value.records.map((record) => ({
-      ...record,
-      record: cloneRecord(record.record),
-    })),
-    professions: value.professions.map((profession) => ({
-      ...profession,
-      aliases: [...profession.aliases],
-    })),
-    places: value.places.map((place) => ({
-      ...place,
-      aliases: [...place.aliases],
-    })),
+    individuals: [],
+    records: [],
+    professions: seedProfessions(),
+    places: seedPlaces(),
   };
-}
-
-function cloneRecord(record: IndividualRecord): IndividualRecord {
-  if (typeof structuredClone === "function") {
-    return structuredClone(record);
-  }
-
-  return JSON.parse(JSON.stringify(record)) as IndividualRecord;
-}
-
-function persist(next: PersistedState): void {
-  state = next;
-
-  if (typeof window === "undefined" || typeof window.localStorage === "undefined") {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (error) {
-    console.warn("Failed to write KinGraph storage:", error);
-  }
-}
-
-function generateId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function seedProfessions(): StoredProfessionDefinition[] {
@@ -216,19 +356,18 @@ function seedPlaces(): StoredPlaceDefinition[] {
   });
 }
 
-function createDefaultState(): PersistedState {
-  return {
-    individuals: [],
-    records: [],
-    professions: seedProfessions(),
-    places: seedPlaces(),
-  };
-}
-
 function normalizeAliases(aliases: readonly string[] | undefined): string[] {
   return Array.from(
     new Set((aliases ?? []).map((alias) => alias.trim()).filter((alias) => alias.length > 0)),
   );
+}
+
+function generateId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function emit(): void {
@@ -238,20 +377,35 @@ function emit(): void {
   }
 }
 
+async function commit(next: PersistedState): Promise<void> {
+  const previous = state;
+  state = next;
+  try {
+    await writeToDatabase(next);
+  } catch (error) {
+    state = previous;
+    throw error;
+  }
+  emit();
+}
+
 export function getState(): PersistedState {
   return cloneState(state);
 }
 
 export function subscribe(listener: StateListener): () => void {
   listeners.add(listener);
-  listener(getState());
+  void initialization.then(() => {
+    listener(getState());
+  });
 
   return () => {
     listeners.delete(listener);
   };
 }
 
-export function createIndividual(name: string): StoredIndividual {
+export async function createIndividual(name: string): Promise<StoredIndividual> {
+  await initialization;
   const now = new Date().toISOString();
   const individual: StoredIndividual = {
     id: generateId(),
@@ -262,12 +416,12 @@ export function createIndividual(name: string): StoredIndividual {
 
   const next = cloneState(state);
   next.individuals.push(individual);
-  persist(next);
-  emit();
+  await commit(next);
   return individual;
 }
 
-export function renameIndividual(id: string, name: string): StoredIndividual | null {
+export async function renameIndividual(id: string, name: string): Promise<StoredIndividual | null> {
+  await initialization;
   const next = cloneState(state);
   const target = next.individuals.find((individual) => individual.id === id);
 
@@ -277,16 +431,16 @@ export function renameIndividual(id: string, name: string): StoredIndividual | n
 
   target.name = name;
   target.updatedAt = new Date().toISOString();
-  persist(next);
-  emit();
+  await commit(next);
   return target;
 }
 
-export function saveProfessionDefinition(options: {
+export async function saveProfessionDefinition(options: {
   id?: string;
   label: string;
   aliases?: string[];
-}): StoredProfessionDefinition {
+}): Promise<StoredProfessionDefinition> {
+  await initialization;
   const label = options.label.trim();
   if (!label) {
     throw new Error("Profession label cannot be empty.");
@@ -318,12 +472,12 @@ export function saveProfessionDefinition(options: {
     next.professions.push(stored);
   }
 
-  persist(next);
-  emit();
+  await commit(next);
   return stored;
 }
 
-export function deleteProfessionDefinition(id: string): void {
+export async function deleteProfessionDefinition(id: string): Promise<void> {
+  await initialization;
   const next = cloneState(state);
   const index = next.professions.findIndex((item) => item.id === id);
 
@@ -332,16 +486,16 @@ export function deleteProfessionDefinition(id: string): void {
   }
 
   next.professions.splice(index, 1);
-  persist(next);
-  emit();
+  await commit(next);
 }
 
-export function savePlaceDefinition(options: {
+export async function savePlaceDefinition(options: {
   id?: string;
   label: string;
   aliases?: string[];
   category?: PlaceCategory;
-}): StoredPlaceDefinition {
+}): Promise<StoredPlaceDefinition> {
+  await initialization;
   const label = options.label.trim();
   if (!label) {
     throw new Error("Place label cannot be empty.");
@@ -375,12 +529,12 @@ export function savePlaceDefinition(options: {
     next.places.push(stored);
   }
 
-  persist(next);
-  emit();
+  await commit(next);
   return stored;
 }
 
-export function deletePlaceDefinition(id: string): void {
+export async function deletePlaceDefinition(id: string): Promise<void> {
+  await initialization;
   const next = cloneState(state);
   const index = next.places.findIndex((item) => item.id === id);
 
@@ -389,15 +543,15 @@ export function deletePlaceDefinition(id: string): void {
   }
 
   next.places.splice(index, 1);
-  persist(next);
-  emit();
+  await commit(next);
 }
 
-export function createRecord(options: {
+export async function createRecord(options: {
   individualId: string;
   summary: string;
   record: IndividualRecord;
-}): StoredRecord {
+}): Promise<StoredRecord> {
+  await initialization;
   const { individualId, summary, record } = options;
   const now = new Date().toISOString();
 
@@ -417,12 +571,12 @@ export function createRecord(options: {
     individual.updatedAt = now;
   }
 
-  persist(next);
-  emit();
+  await commit(next);
   return storedRecord;
 }
 
-export function deleteRecord(id: string): void {
+export async function deleteRecord(id: string): Promise<void> {
+  await initialization;
   const next = cloneState(state);
   const index = next.records.findIndex((record) => record.id === id);
 
@@ -437,23 +591,38 @@ export function deleteRecord(id: string): void {
     individual.updatedAt = new Date().toISOString();
   }
 
-  persist(next);
-  emit();
+  await commit(next);
 }
 
-export function clearRecords(): void {
-  const next = cloneState(state);
-
-  if (!next.records.length) {
+export async function clearRecords(): Promise<void> {
+  await initialization;
+  if (!state.records.length) {
     return;
   }
 
+  const next = cloneState(state);
   next.records = [];
-  persist(next);
-  emit();
+  await commit(next);
 }
 
-export function clearAll(): void {
-  persist(cloneState(defaultState));
-  emit();
+export async function clearAll(): Promise<void> {
+  await initialization;
+  const next = cloneState(defaultState);
+  await commit(next);
+}
+
+export async function exportAllData(): Promise<PersistedState> {
+  await initialization;
+  return getState();
+}
+
+export async function importAllData(raw: unknown): Promise<PersistedState> {
+  await initialization;
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error("Invalid data format.");
+  }
+
+  const normalized = normalizeState(raw as Partial<PersistedState>);
+  await commit(cloneState(normalized));
+  return getState();
 }

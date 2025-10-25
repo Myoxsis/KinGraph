@@ -4,6 +4,7 @@ import { highlight } from "../../highlight";
 import type { PlaceCategory } from "../../places";
 import type { IndividualRecord } from "../../schema";
 import {
+  clearAll,
   clearRecords,
   createIndividual,
   createRecord,
@@ -11,6 +12,8 @@ import {
   getState,
   deletePlaceDefinition,
   deleteProfessionDefinition,
+  exportAllData,
+  importAllData,
   renameIndividual,
   savePlaceDefinition,
   saveProfessionDefinition,
@@ -238,6 +241,26 @@ const placeList = requireElement<HTMLDivElement>(
   "place-list",
   (el): el is HTMLDivElement => el instanceof HTMLDivElement
 );
+const exportDataButton = requireElement<HTMLButtonElement>(
+  "export-data",
+  (el): el is HTMLButtonElement => el instanceof HTMLButtonElement
+);
+const importDataButton = requireElement<HTMLButtonElement>(
+  "import-data",
+  (el): el is HTMLButtonElement => el instanceof HTMLButtonElement
+);
+const resetDataButton = requireElement<HTMLButtonElement>(
+  "reset-data",
+  (el): el is HTMLButtonElement => el instanceof HTMLButtonElement
+);
+const importDataInput = requireElement<HTMLInputElement>(
+  "import-data-input",
+  (el): el is HTMLInputElement => el instanceof HTMLInputElement
+);
+const dataFeedback = requireElement<HTMLSpanElement>(
+  "data-feedback",
+  (el): el is HTMLSpanElement => el instanceof HTMLSpanElement
+);
 
 let currentView: ViewMode = "records";
 let currentRecord: IndividualRecord | null = null;
@@ -251,6 +274,7 @@ let editingProfessionId: string | null = null;
 let editingPlaceId: string | null = null;
 let professionFeedbackTimeout: number | null = null;
 let placeFeedbackTimeout: number | null = null;
+let dataFeedbackTimeout: number | null = null;
 
 function buildExtractOptions(): ExtractOptions {
   return {
@@ -1352,6 +1376,17 @@ function resetPlaceForm(): void {
   placeCategorySelect.value = "";
 }
 
+function showDataFeedback(message: string): void {
+  dataFeedback.textContent = message;
+  if (dataFeedbackTimeout !== null) {
+    window.clearTimeout(dataFeedbackTimeout);
+  }
+  dataFeedbackTimeout = window.setTimeout(() => {
+    dataFeedback.textContent = "";
+    dataFeedbackTimeout = null;
+  }, 4000);
+}
+
 function showProfessionFeedback(message: string): void {
   professionFeedback.textContent = message;
   if (professionFeedbackTimeout !== null) {
@@ -1393,7 +1428,7 @@ function setPlaceEditing(definition: StoredPlaceDefinition): void {
   placeLabelInput.focus();
 }
 
-function handleProfessionAction(event: MouseEvent): void {
+async function handleProfessionAction(event: MouseEvent): Promise<void> {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
   if (!button) {
     return;
@@ -1413,16 +1448,21 @@ function handleProfessionAction(event: MouseEvent): void {
   } else if (button.dataset.action === "delete") {
     const confirmed = window.confirm("Remove this profession definition?");
     if (confirmed) {
-      deleteProfessionDefinition(id);
-      showProfessionFeedback("Profession removed.");
-      if (editingProfessionId === id) {
-        resetProfessionForm();
+      try {
+        await deleteProfessionDefinition(id);
+        showProfessionFeedback("Profession removed.");
+        if (editingProfessionId === id) {
+          resetProfessionForm();
+        }
+      } catch (error) {
+        console.error("Failed to delete profession", error);
+        showProfessionFeedback("Unable to remove profession.");
       }
     }
   }
 }
 
-function handlePlaceAction(event: MouseEvent): void {
+async function handlePlaceAction(event: MouseEvent): Promise<void> {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
   if (!button) {
     return;
@@ -1442,10 +1482,15 @@ function handlePlaceAction(event: MouseEvent): void {
   } else if (button.dataset.action === "delete") {
     const confirmed = window.confirm("Remove this place definition?");
     if (confirmed) {
-      deletePlaceDefinition(id);
-      showPlaceFeedback("Place removed.");
-      if (editingPlaceId === id) {
-        resetPlaceForm();
+      try {
+        await deletePlaceDefinition(id);
+        showPlaceFeedback("Place removed.");
+        if (editingPlaceId === id) {
+          resetPlaceForm();
+        }
+      } catch (error) {
+        console.error("Failed to delete place", error);
+        showPlaceFeedback("Unable to remove place.");
       }
     }
   }
@@ -1563,7 +1608,7 @@ function toggleSources(): void {
   }
 }
 
-function handleRecordAction(event: MouseEvent): void {
+async function handleRecordAction(event: MouseEvent): Promise<void> {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
 
   if (!button) {
@@ -1593,12 +1638,18 @@ function handleRecordAction(event: MouseEvent): void {
     const confirmDelete = window.confirm("Remove this saved record? This cannot be undone.");
 
     if (confirmDelete) {
-      deleteRecord(recordId);
+      try {
+        await deleteRecord(recordId);
+        saveFeedback.textContent = "Removed saved record.";
+      } catch (error) {
+        console.error("Failed to delete record", error);
+        saveFeedback.textContent = "Unable to remove record.";
+      }
     }
   }
 }
 
-function handleIndividualAction(event: MouseEvent): void {
+async function handleIndividualAction(event: MouseEvent): Promise<void> {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
 
   if (!button) {
@@ -1620,8 +1671,20 @@ function handleIndividualAction(event: MouseEvent): void {
 
     const nextName = window.prompt("Rename individual", individual.name);
 
-    if (nextName && nextName.trim() && nextName.trim() !== individual.name) {
-      renameIndividual(individualId, nextName.trim());
+    if (nextName) {
+      const trimmedName = nextName.trim();
+
+      if (!trimmedName || trimmedName === individual.name) {
+        return;
+      }
+
+      try {
+        await renameIndividual(individualId, trimmedName);
+        saveFeedback.textContent = `Renamed individual to ${trimmedName}.`;
+      } catch (error) {
+        console.error("Failed to rename individual", error);
+        saveFeedback.textContent = "Unable to rename individual.";
+      }
     }
   }
 }
@@ -1634,8 +1697,12 @@ htmlInput.addEventListener("input", handleInput);
 saveModeNew.addEventListener("change", updateSavePanel);
 saveModeExisting.addEventListener("change", updateSavePanel);
 toggleSourcesButton.addEventListener("click", toggleSources);
-savedRecordsContainer.addEventListener("click", handleRecordAction);
-individualsList.addEventListener("click", handleIndividualAction);
+savedRecordsContainer.addEventListener("click", (event) => {
+  void handleRecordAction(event as MouseEvent);
+});
+individualsList.addEventListener("click", (event) => {
+  void handleIndividualAction(event as MouseEvent);
+});
 reextractButton.addEventListener("click", () => {
   handleInput();
   if (!errorBox.hidden && errorBox.textContent) {
@@ -1657,7 +1724,7 @@ treeClearButton.addEventListener("click", () => {
   treeSelect.value = "";
   renderTree(latestState);
 });
-professionForm.addEventListener("submit", (event) => {
+professionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const label = professionLabelInput.value.trim();
 
@@ -1669,7 +1736,7 @@ professionForm.addEventListener("submit", (event) => {
   const aliases = parseAliasInput(professionAliasesInput.value);
 
   try {
-    saveProfessionDefinition({
+    await saveProfessionDefinition({
       id: editingProfessionId ?? undefined,
       label,
       aliases,
@@ -1687,8 +1754,10 @@ professionCancelButton.addEventListener("click", () => {
   resetProfessionForm();
   showProfessionFeedback("Edit cancelled.");
 });
-professionList.addEventListener("click", handleProfessionAction);
-placeForm.addEventListener("submit", (event) => {
+professionList.addEventListener("click", (event) => {
+  void handleProfessionAction(event as MouseEvent);
+});
+placeForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const label = placeLabelInput.value.trim();
 
@@ -1704,7 +1773,7 @@ placeForm.addEventListener("submit", (event) => {
     : undefined;
 
   try {
-    savePlaceDefinition({
+    await savePlaceDefinition({
       id: editingPlaceId ?? undefined,
       label,
       aliases,
@@ -1721,9 +1790,77 @@ placeCancelButton.addEventListener("click", () => {
   resetPlaceForm();
   showPlaceFeedback("Edit cancelled.");
 });
-placeList.addEventListener("click", handlePlaceAction);
+placeList.addEventListener("click", (event) => {
+  void handlePlaceAction(event as MouseEvent);
+});
 
-clearRecordsButton.addEventListener("click", () => {
+exportDataButton.addEventListener("click", async () => {
+  try {
+    const snapshot = await exportAllData();
+    const payload = JSON.stringify(snapshot, null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    link.href = url;
+    link.download = `kingraph-export-${timestamp}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 1000);
+    showDataFeedback("Exported data as JSON file.");
+  } catch (error) {
+    console.error("Failed to export data", error);
+    showDataFeedback("Failed to export data.");
+  }
+});
+
+importDataButton.addEventListener("click", () => {
+  importDataInput.value = "";
+  importDataInput.click();
+});
+
+importDataInput.addEventListener("change", async () => {
+  const file = importDataInput.files?.[0];
+
+  if (!file) {
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text) as unknown;
+    await importAllData(parsed);
+    showDataFeedback("Imported data successfully.");
+  } catch (error) {
+    console.error("Failed to import data", error);
+    showDataFeedback("Failed to import data. Please verify the file.");
+  } finally {
+    importDataInput.value = "";
+  }
+});
+
+resetDataButton.addEventListener("click", async () => {
+  const confirmed = window.confirm(
+    "Reset all KinGraph data to defaults? This removes saved records, individuals, and custom definitions.",
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await clearAll();
+    showDataFeedback("Reset all data to defaults.");
+  } catch (error) {
+    console.error("Failed to reset data", error);
+    showDataFeedback("Failed to reset data.");
+  }
+});
+
+clearRecordsButton.addEventListener("click", async () => {
   if (!latestState.records.length) {
     return;
   }
@@ -1731,12 +1868,17 @@ clearRecordsButton.addEventListener("click", () => {
   const shouldClear = window.confirm("Remove all saved records? Individuals will be kept.");
 
   if (shouldClear) {
-    clearRecords();
-    saveFeedback.textContent = "Cleared all saved records.";
+    try {
+      await clearRecords();
+      saveFeedback.textContent = "Cleared all saved records.";
+    } catch (error) {
+      console.error("Failed to clear saved records", error);
+      saveFeedback.textContent = "Unable to clear saved records.";
+    }
   }
 });
 
-saveForm.addEventListener("submit", (event) => {
+saveForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   if (!currentRecord) {
@@ -1747,52 +1889,58 @@ saveForm.addEventListener("submit", (event) => {
   let individualId: string | null = null;
   let individualName = "";
 
-  if (saveModeNew.checked && !saveModeNew.disabled) {
-    const providedName = newIndividualInput.value.trim() || suggestedName;
+  try {
+    if (saveModeNew.checked && !saveModeNew.disabled) {
+      const providedName = newIndividualInput.value.trim() || suggestedName;
 
-    if (!providedName) {
-      saveFeedback.textContent = "Provide a name for the new individual.";
-      newIndividualInput.focus();
+      if (!providedName) {
+        saveFeedback.textContent = "Provide a name for the new individual.";
+        newIndividualInput.focus();
+        return;
+      }
+
+      const individual = await createIndividual(providedName);
+      individualId = individual.id;
+      individualName = individual.name;
+      newIndividualInput.value = "";
+    } else if (saveModeExisting.checked && !saveModeExisting.disabled) {
+      const selected = existingIndividualSelect.value;
+
+      if (!selected) {
+        saveFeedback.textContent = "Choose an individual to link.";
+        existingIndividualSelect.focus();
+        return;
+      }
+
+      individualId = selected;
+      const individual = latestState.individuals.find((item) => item.id === selected);
+      individualName = individual ? individual.name : "selected individual";
+    } else {
+      saveFeedback.textContent = "Select how you want to link this record.";
       return;
     }
 
-    const individual = createIndividual(providedName);
-    individualId = individual.id;
-    individualName = individual.name;
-  } else if (saveModeExisting.checked && !saveModeExisting.disabled) {
-    const selected = existingIndividualSelect.value;
-
-    if (!selected) {
-      saveFeedback.textContent = "Choose an individual to link.";
-      existingIndividualSelect.focus();
+    if (!individualId) {
       return;
     }
 
-    individualId = selected;
-    const individual = latestState.individuals.find((item) => item.id === selected);
-    individualName = individual ? individual.name : "selected individual";
-  } else {
-    saveFeedback.textContent = "Select how you want to link this record.";
-    return;
+    const summary = getRecordSummary(currentRecord);
+    await createRecord({ individualId, summary, record: currentRecord });
+    saveFeedback.textContent = `Saved record for ${individualName}.`;
+
+    if (saveModeNew.checked) {
+      saveModeExisting.checked = true;
+      saveModeNew.checked = false;
+    }
+
+    updateSavePanel();
+  } catch (error) {
+    console.error("Failed to save record", error);
+    saveFeedback.textContent = "Unable to save record. Please try again.";
   }
-
-  if (!individualId) {
-    return;
-  }
-
-  const summary = getRecordSummary(currentRecord);
-  createRecord({ individualId, summary, record: currentRecord });
-  saveFeedback.textContent = `Saved record for ${individualName}.`;
-
-  if (saveModeNew.checked) {
-    saveModeExisting.checked = true;
-    saveModeNew.checked = false;
-  }
-
-  updateSavePanel();
 });
 
-createIndividualForm.addEventListener("submit", (event) => {
+createIndividualForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = createIndividualNameInput.value.trim();
 
@@ -1801,10 +1949,15 @@ createIndividualForm.addEventListener("submit", (event) => {
     return;
   }
 
-  createIndividual(name);
-  createIndividualNameInput.value = "";
-  saveFeedback.textContent = `Created individual ${name}.`;
-  updateSavePanel();
+  try {
+    const individual = await createIndividual(name);
+    createIndividualNameInput.value = "";
+    saveFeedback.textContent = `Created individual ${individual.name}.`;
+    updateSavePanel();
+  } catch (error) {
+    console.error("Failed to create individual", error);
+    saveFeedback.textContent = "Unable to create individual.";
+  }
 });
 
 subscribe((state) => {
