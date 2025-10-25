@@ -5,6 +5,7 @@ import type { IndividualRecord } from "../../../../schema";
 
 const MAX_HTML_BYTES = 1024 * 1024; // 1MB
 const HTML_DETECTION_REGEX = /<\/?[a-z][^>]*>/i;
+const textEncoder = new TextEncoder();
 
 const requestSchema = z.object({
   html: z.string().min(1, "HTML is required"),
@@ -32,7 +33,7 @@ function isHtmlContent(html: string): boolean {
 }
 
 function exceedsPayloadLimit(html: string): boolean {
-  return Buffer.byteLength(html, "utf8") > MAX_HTML_BYTES;
+  return textEncoder.encode(html).byteLength > MAX_HTML_BYTES;
 }
 
 function extractError(status: number, message: string): ExtractRouteResponse<{ error: string }> {

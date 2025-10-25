@@ -4,16 +4,14 @@ import { extractIndividual } from "./extract";
 import { IndividualRecordSchema } from "./schema";
 
 async function readAllStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
+  stdin.setEncoding("utf8");
+  let data = "";
+
   for await (const chunk of stdin) {
-    if (typeof chunk === "string") {
-      chunks.push(Buffer.from(chunk));
-    } else {
-      chunks.push(chunk);
-    }
+    data += chunk;
   }
 
-  return Buffer.concat(chunks).toString("utf8");
+  return data;
 }
 
 async function main() {

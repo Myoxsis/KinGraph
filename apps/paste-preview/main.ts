@@ -13,16 +13,43 @@ interface FieldRow {
 
 const DEFAULT_HTML = "<h1>Jane Doe</h1><p>Born about 1892 to Mary &amp; John.</p>";
 
-const htmlInput = document.getElementById("html-input") as HTMLTextAreaElement | null;
-const jsonOutput = document.getElementById("json-output") as HTMLPreElement | null;
-const errorBox = document.getElementById("error") as HTMLDivElement | null;
-const confidenceList = document.getElementById("confidence") as HTMLDivElement | null;
-const toggleSourcesButton = document.getElementById("toggle-sources") as HTMLButtonElement | null;
-const previewFrame = document.getElementById("source-preview") as HTMLIFrameElement | null;
+function requireElement<T extends Element>(
+  id: string,
+  guard: (el: Element) => el is T
+): T {
+  const element = document.getElementById(id);
 
-if (!htmlInput || !jsonOutput || !errorBox || !confidenceList || !toggleSourcesButton || !previewFrame) {
-  throw new Error("Paste preview markup is missing required elements");
+  if (!element || !guard(element)) {
+    throw new Error(`Paste preview markup is missing required element: ${id}`);
+  }
+
+  return element;
 }
+
+const htmlInput = requireElement<HTMLTextAreaElement>(
+  "html-input",
+  (el): el is HTMLTextAreaElement => el instanceof HTMLTextAreaElement
+);
+const jsonOutput = requireElement<HTMLPreElement>(
+  "json-output",
+  (el): el is HTMLPreElement => el instanceof HTMLPreElement
+);
+const errorBox = requireElement<HTMLDivElement>(
+  "error",
+  (el): el is HTMLDivElement => el instanceof HTMLDivElement
+);
+const confidenceList = requireElement<HTMLDivElement>(
+  "confidence",
+  (el): el is HTMLDivElement => el instanceof HTMLDivElement
+);
+const toggleSourcesButton = requireElement<HTMLButtonElement>(
+  "toggle-sources",
+  (el): el is HTMLButtonElement => el instanceof HTMLButtonElement
+);
+const previewFrame = requireElement<HTMLIFrameElement>(
+  "source-preview",
+  (el): el is HTMLIFrameElement => el instanceof HTMLIFrameElement
+);
 
 let lastHighlightDocument = "";
 let showingSources = false;

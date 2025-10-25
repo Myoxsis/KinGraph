@@ -6,18 +6,23 @@
   "scripts": {
     "dev": "npm exec -- tsx watch cli.ts",
     "demo": "npm exec -- tsx apps/demo.ts",
-    "start": "npm exec -- tsx apps/paste-preview/dev-server.ts",
+    "start": "npm exec -- vite dev",
+    "build": "npm run typecheck && npm exec -- vite build",
+    "preview": "npm exec -- vite preview",
+    "typecheck": "npm exec -- tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
     "chrono-node": "^2.6.1",
-    "esbuild": "^0.21.5",
     "tsx": "^4.7.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@types/node": "^20.12.7",
+    "esbuild": "^0.21.5",
     "typescript": "^5.4.5",
+    "vite": "^5.2.11",
     "vitest": "^1.5.0"
   },
   "bin": {

@@ -8,8 +8,12 @@
     "skipLibCheck": true,
     "strict": true,
     "lib": ["DOM", "DOM.Iterable", "ES2020"],
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals", "vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
-  "include": ["**/*.ts"],
+  "include": ["types/**/*.d.ts", "**/*.ts"],
   "exclude": ["node_modules"]
 }
