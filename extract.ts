@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import * as chrono from "chrono-node";
 import { IndividualRecordSchema, type IndividualRecord } from "./schema";
+import LABELS, { type LabelKey } from "./labels";
 
 type ProvenanceEntry = IndividualRecord["provenance"][number];
 
@@ -307,6 +308,23 @@ function extractFullNameFromHeadings(html: string, record: IndividualRecord, $: 
   }
 }
 
+function normalizeForComparison(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function labelMatches(label: string, key: LabelKey) {
+  const normalizedLabel = normalizeForComparison(label);
+  return LABELS[key].some((synonym) => {
+    const normalizedSynonym = normalizeForComparison(synonym);
+    return normalizedSynonym && normalizedLabel.includes(normalizedSynonym);
+  });
+}
+
 function handleLabelValue(
   html: string,
   label: string,
@@ -314,19 +332,19 @@ function handleLabelValue(
   record: IndividualRecord,
   provenanceText: string
 ) {
-  const normalizedLabel = label.toLowerCase();
+  const normalizedLabel = normalizeForComparison(label);
 
-  if (/\b(maiden)\b/.test(normalizedLabel)) {
+  if (labelMatches(label, "maiden")) {
     record.maidenName = value.trim();
     addProvenance(record, html, "maidenName", value.trim());
-  } else if (/\b(surname|last\s+name)\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "surname")) {
     record.surname = value.trim();
     addProvenance(record, html, "surname", value.trim());
-  } else if (/\b(given|forename)\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "given")) {
     const parts = value.split(/[,;]+|\s+/).map((part) => part.trim()).filter(Boolean);
     record.givenNames = parts;
     addProvenance(record, html, "givenNames", value.trim());
-  } else if (/\bname\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "name")) {
     const trimmed = value.trim();
     const maidenMatch = trimmed.match(/\bn[eé]e\s+([A-Za-z'’\-]+)/i);
     if (maidenMatch) {
@@ -353,7 +371,7 @@ function handleLabelValue(
       record.sex = normalizedSex;
       addProvenance(record, html, "sex", value.trim());
     }
-  } else if (/\b(born|birth)\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "birth")) {
     record.birth.raw = value.trim();
     const parsed = parseDateFragment(value);
     if (parsed.year !== undefined) {
@@ -369,7 +387,7 @@ function handleLabelValue(
       record.birth.approx = parsed.approx;
     }
     addProvenance(record, html, "birth.raw", provenanceText.trim());
-  } else if (/\b(died|death)\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "death")) {
     record.death.raw = value.trim();
     const parsed = parseDateFragment(value);
     if (parsed.year !== undefined) {
@@ -385,7 +403,7 @@ function handleLabelValue(
       record.death.approx = parsed.approx;
     }
     addProvenance(record, html, "death.raw", provenanceText.trim());
-  } else if (/\bresidence\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "residence")) {
     const entries = value
       .split(/[,;\n]+/)
       .map((part) => part.trim())
@@ -395,13 +413,13 @@ function handleLabelValue(
       record.residences.push({ raw: entry, year: parsed.year });
       addProvenance(record, html, `residences[${record.residences.length - 1}].raw`, entry);
     });
-  } else if (/\bfather\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "father")) {
     record.parents.father = value.trim();
     addProvenance(record, html, "parents.father", value.trim());
-  } else if (/\bmother\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "mother")) {
     record.parents.mother = value.trim();
     addProvenance(record, html, "parents.mother", value.trim());
-  } else if (/\b(spouse|husband|wife)\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "spouse")) {
     const entries = value
       .split(/[,;\n]+/)
       .map((part) => part.trim())
@@ -410,7 +428,7 @@ function handleLabelValue(
       pushUnique(record.spouses, entry);
       addProvenance(record, html, "spouses", entry);
     });
-  } else if (/\bchild\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "child")) {
     const entries = value
       .split(/[,;\n]+/)
       .map((part) => part.trim())
@@ -419,10 +437,10 @@ function handleLabelValue(
       pushUnique(record.children, entry);
       addProvenance(record, html, "children", entry);
     });
-  } else if (/\boccupation\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "occupation")) {
     record.occupation = value.trim();
     addProvenance(record, html, "occupation", value.trim());
-  } else if (/\breligion\b/.test(normalizedLabel)) {
+  } else if (labelMatches(label, "religion")) {
     record.religion = value.trim();
     addProvenance(record, html, "religion", value.trim());
   } else if (/\bnotes\b/.test(normalizedLabel)) {
