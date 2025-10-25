@@ -12,6 +12,7 @@ const LABELS = {
   child: ["child", "son", "daughter", "enfant", "kind"],
   occupation: ["occupation", "profession", "emploi", "beruf"],
   religion: ["religion", "confession"],
+  source: ["source", "sources", "citation", "référence", "références"],
 } as const;
 
 export type LabelKey = keyof typeof LABELS;
