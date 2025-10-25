@@ -36,6 +36,15 @@ interface FieldRow {
 
 type ViewMode = "records" | "individuals" | "tree" | "settings";
 
+const VIEW_HASHES: Record<ViewMode, string> = {
+  records: "#/records",
+  individuals: "#/individuals",
+  tree: "#/tree",
+  settings: "#/settings",
+};
+
+const DEFAULT_VIEW: ViewMode = "records";
+
 type PersistedState = ReturnType<typeof getState>;
 
 const DEFAULT_HTML = "<h1>Jane Doe</h1><p>Born about 1892 to Mary &amp; John.</p>";
@@ -97,21 +106,21 @@ const settingsView = requireElement<HTMLElement>(
   "settings-view",
   (el): el is HTMLElement => el instanceof HTMLElement
 );
-const recordsTab = requireElement<HTMLButtonElement>(
+const recordsTab = requireElement<HTMLAnchorElement>(
   "tab-records",
-  (el): el is HTMLButtonElement => el instanceof HTMLButtonElement
+  (el): el is HTMLAnchorElement => el instanceof HTMLAnchorElement
 );
-const individualsTab = requireElement<HTMLButtonElement>(
+const individualsTab = requireElement<HTMLAnchorElement>(
   "tab-individuals",
-  (el): el is HTMLButtonElement => el instanceof HTMLButtonElement
+  (el): el is HTMLAnchorElement => el instanceof HTMLAnchorElement
 );
-const treeTab = requireElement<HTMLButtonElement>(
+const treeTab = requireElement<HTMLAnchorElement>(
   "tab-tree",
-  (el): el is HTMLButtonElement => el instanceof HTMLButtonElement
+  (el): el is HTMLAnchorElement => el instanceof HTMLAnchorElement
 );
-const settingsTab = requireElement<HTMLButtonElement>(
+const settingsTab = requireElement<HTMLAnchorElement>(
   "tab-settings",
-  (el): el is HTMLButtonElement => el instanceof HTMLButtonElement
+  (el): el is HTMLAnchorElement => el instanceof HTMLAnchorElement
 );
 const provenanceCount = requireElement<HTMLSpanElement>(
   "provenance-count",
@@ -262,7 +271,7 @@ const dataFeedback = requireElement<HTMLSpanElement>(
   (el): el is HTMLSpanElement => el instanceof HTMLSpanElement
 );
 
-let currentView: ViewMode = "records";
+let currentView: ViewMode = DEFAULT_VIEW;
 let currentRecord: IndividualRecord | null = null;
 let lastHighlightDocument = "";
 let showingSources = false;
@@ -1496,10 +1505,53 @@ async function handlePlaceAction(event: MouseEvent): Promise<void> {
   }
 }
 
+function parseViewFromHash(hash: string): ViewMode {
+  const normalized = hash
+    .replace(/^#/, "")
+    .replace(/^\/+/, "")
+    .trim()
+    .toLowerCase();
+
+  switch (normalized) {
+    case "individuals":
+      return "individuals";
+    case "tree":
+      return "tree";
+    case "settings":
+      return "settings";
+    case "records":
+      return "records";
+    default:
+      return DEFAULT_VIEW;
+  }
+}
+
+function navigateToView(next: ViewMode): void {
+  const targetHash = VIEW_HASHES[next];
+
+  if (window.location.hash !== targetHash) {
+    window.location.hash = targetHash;
+  }
+
+  switchView(next);
+}
+
+function handleRouteChange(): void {
+  const next = parseViewFromHash(window.location.hash);
+  const canonicalHash = VIEW_HASHES[next];
+
+  if (window.location.hash !== canonicalHash) {
+    window.location.hash = canonicalHash;
+    return;
+  }
+
+  switchView(next);
+}
+
 function switchView(next: ViewMode): void {
   currentView = next;
 
-  const mapping: Record<ViewMode, { view: HTMLElement; tab: HTMLButtonElement }> = {
+  const mapping: Record<ViewMode, { view: HTMLElement; tab: HTMLAnchorElement }> = {
     records: { view: recordsView, tab: recordsTab },
     individuals: { view: individualsView, tab: individualsTab },
     tree: { view: treeView, tab: treeTab },
@@ -1629,7 +1681,7 @@ async function handleRecordAction(event: MouseEvent): Promise<void> {
     }
 
     htmlInput.value = stored.record.sourceHtml;
-    switchView("records");
+    navigateToView("records");
     showingSources = false;
     toggleSourcesButton.textContent = "Highlight sources";
     handleInput();
@@ -1689,10 +1741,6 @@ async function handleIndividualAction(event: MouseEvent): Promise<void> {
   }
 }
 
-recordsTab.addEventListener("click", () => switchView("records"));
-individualsTab.addEventListener("click", () => switchView("individuals"));
-treeTab.addEventListener("click", () => switchView("tree"));
-settingsTab.addEventListener("click", () => switchView("settings"));
 htmlInput.addEventListener("input", handleInput);
 saveModeNew.addEventListener("change", updateSavePanel);
 saveModeExisting.addEventListener("change", updateSavePanel);
@@ -1975,8 +2023,17 @@ subscribe((state) => {
 
 function resetApplication(): void {
   htmlInput.value = DEFAULT_HTML;
-  switchView("records");
   handleInput();
 }
 
 resetApplication();
+
+window.addEventListener("hashchange", handleRouteChange);
+
+const initialView = parseViewFromHash(window.location.hash);
+
+if (window.location.hash !== VIEW_HASHES[initialView]) {
+  window.location.hash = VIEW_HASHES[initialView];
+}
+
+switchView(initialView);
