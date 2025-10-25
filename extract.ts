@@ -1,9 +1,22 @@
 import { load } from "cheerio";
+import type { AnyNode } from "domhandler";
 import * as chrono from "chrono-node";
 import { IndividualRecordSchema, type IndividualRecord } from "./schema";
 import LABELS, { type LabelKey } from "./labels";
 
 type ProvenanceEntry = IndividualRecord["provenance"][number];
+
+interface Range {
+  start: number;
+  end: number;
+}
+
+type ProvenanceSource =
+  | Range
+  | {
+      text: string;
+      context?: Range;
+    };
 
 function createRecordSkeleton(html: string): IndividualRecord {
   return {
@@ -31,20 +44,182 @@ function pushUnique(target: string[], value: string | undefined) {
   }
 }
 
-function addProvenance(record: IndividualRecord, html: string, field: string, text: string) {
+function clampRange(range: Range, htmlLength: number): Range | undefined {
+  if (!Number.isFinite(range.start) || !Number.isFinite(range.end)) {
+    return undefined;
+  }
+  const start = Math.max(0, Math.min(htmlLength, Math.floor(range.start)));
+  const end = Math.max(start, Math.min(htmlLength, Math.floor(range.end)));
+  if (end <= start) {
+    return undefined;
+  }
+  return { start, end };
+}
+
+function findRangeByText(html: string, text: string, context?: Range): Range | undefined {
+  if (!text) {
+    return undefined;
+  }
+
+  const normalizedContext = context ? clampRange(context, html.length) : undefined;
+  if (normalizedContext) {
+    const snippet = html.slice(normalizedContext.start, normalizedContext.end);
+    const relativeIndex = snippet.indexOf(text);
+    if (relativeIndex !== -1) {
+      const start = normalizedContext.start + relativeIndex;
+      return { start, end: start + text.length };
+    }
+  }
+
   const start = html.indexOf(text);
   if (start === -1) {
+    return undefined;
+  }
+
+  return { start, end: start + text.length };
+}
+
+function addProvenance(
+  record: IndividualRecord,
+  html: string,
+  field: string,
+  source: ProvenanceSource,
+) {
+  let range: Range | undefined;
+  if ("start" in source) {
+    range = clampRange(source, html.length);
+  } else {
+    range = findRangeByText(html, source.text, source.context);
+  }
+
+  if (!range) {
     return;
   }
 
-  const entry: ProvenanceEntry = {
-    field,
-    text,
-    start,
-    end: start + text.length,
-  };
+  const text = html.slice(range.start, range.end);
+  if (!text) {
+    return;
+  }
 
-  record.provenance.push(entry);
+const entry: ProvenanceEntry = {
+  field,
+  text,
+  start: range.start,
+  end: range.end,
+};
+
+record.provenance.push(entry);
+}
+
+function getLocationRange(node: AnyNode | null | undefined): Range | undefined {
+  const location = (node as unknown as { sourceCodeLocation?: { startOffset?: number; endOffset?: number } })
+    ?.sourceCodeLocation;
+  if (!location) {
+    return undefined;
+  }
+  const { startOffset, endOffset } = location;
+  if (typeof startOffset !== "number" || typeof endOffset !== "number" || endOffset <= startOffset) {
+    return undefined;
+  }
+  return { start: startOffset, end: endOffset };
+}
+
+function getInnerRange(node: AnyNode | null | undefined): Range | undefined {
+  const location = (node as unknown as {
+    sourceCodeLocation?: {
+      startOffset?: number;
+      endOffset?: number;
+      startTag?: { endOffset?: number };
+      endTag?: { startOffset?: number };
+    };
+  })?.sourceCodeLocation;
+  if (!location) {
+    return undefined;
+  }
+  const start = location.startTag?.endOffset ?? location.startOffset;
+  const end = location.endTag?.startOffset ?? location.endOffset;
+  if (typeof start !== "number" || typeof end !== "number" || end <= start) {
+    return undefined;
+  }
+  return { start, end };
+}
+
+function findFirstTextNode(node: AnyNode | null | undefined): AnyNode | undefined {
+  if (!node) {
+    return undefined;
+  }
+  if ((node as { type?: string }).type === "text") {
+    return node;
+  }
+  const children = (node as { childNodes?: AnyNode[] }).childNodes ?? [];
+  for (const child of children) {
+    const result = findFirstTextNode(child);
+    if (result) {
+      return result;
+    }
+  }
+  return undefined;
+}
+
+function findLastTextNode(node: AnyNode | null | undefined): AnyNode | undefined {
+  if (!node) {
+    return undefined;
+  }
+  if ((node as { type?: string }).type === "text") {
+    return node;
+  }
+  const children = (node as { childNodes?: AnyNode[] }).childNodes ?? [];
+  for (let index = children.length - 1; index >= 0; index -= 1) {
+    const result = findLastTextNode(children[index]);
+    if (result) {
+      return result;
+    }
+  }
+  return undefined;
+}
+
+function getTextRangeFromNode(node: AnyNode | null | undefined): Range | undefined {
+  const first = findFirstTextNode(node);
+  const last = findLastTextNode(node);
+  if (!first || !last) {
+    return undefined;
+  }
+  const startRange = getLocationRange(first);
+  const endRange = getLocationRange(last);
+  if (!startRange || !endRange) {
+    return undefined;
+  }
+  return { start: startRange.start, end: endRange.end };
+}
+
+function mergeRanges(ranges: (Range | undefined)[]): Range | undefined {
+  const valid = ranges.filter((range): range is Range => Boolean(range));
+  if (!valid.length) {
+    return undefined;
+  }
+  const start = Math.min(...valid.map((range) => range.start));
+  const end = Math.max(...valid.map((range) => range.end));
+  if (end <= start) {
+    return undefined;
+  }
+  return { start, end };
+}
+
+function traverseNodes(node: AnyNode | null | undefined, visit: (node: AnyNode) => void) {
+  if (!node) {
+    return;
+  }
+  visit(node);
+  const children = (node as { childNodes?: AnyNode[] }).childNodes ?? [];
+  for (const child of children) {
+    traverseNodes(child, visit);
+  }
+}
+
+function getRangeForNodes(nodes: AnyNode[]): Range | undefined {
+  return mergeRanges(
+    nodes.map((node) => getTextRangeFromNode(node) ?? getInnerRange(node) ?? getLocationRange(node)),
+  );
 }
 
 function normalizeSex(value: string): "M" | "F" | "U" | undefined {
@@ -247,6 +422,7 @@ function extractFullNameFromHeadings(html: string, record: IndividualRecord, $: 
   let matchedName: string | undefined;
   let birthYear: number | undefined;
   let deathYear: number | undefined;
+  let matchedNode: AnyNode | undefined;
 
   $(headingSelector)
     .add($("p").first())
@@ -262,6 +438,7 @@ function extractFullNameFromHeadings(html: string, record: IndividualRecord, $: 
         matchedName = match[1].trim();
         birthYear = Number(match[2]);
         deathYear = Number(match[3]);
+        matchedNode = el as unknown as AnyNode;
         return false;
       }
     });
@@ -270,11 +447,14 @@ function extractFullNameFromHeadings(html: string, record: IndividualRecord, $: 
     return;
   }
 
+  const headingContext = matchedNode ? getTextRangeFromNode(matchedNode) ?? getInnerRange(matchedNode) : undefined;
+  const matchedRange = matchedText ? findRangeByText(html, matchedText, headingContext) ?? headingContext : headingContext;
+
   const maidenMatch = matchedName.match(/\bn[eé]e\s+([A-Za-z'’\-]+)/i);
   if (maidenMatch) {
     record.maidenName = maidenMatch[1];
     matchedName = matchedName.replace(maidenMatch[0], "").trim();
-    addProvenance(record, html, "maidenName", maidenMatch[1]);
+    addProvenance(record, html, "maidenName", { text: maidenMatch[1], context: matchedRange });
   }
 
   const nameTokens = matchedName.split(/\s+/).filter(Boolean);
@@ -284,27 +464,31 @@ function extractFullNameFromHeadings(html: string, record: IndividualRecord, $: 
 
     if (!record.surname) {
       record.surname = surname;
-      addProvenance(record, html, "surname", surname);
+      addProvenance(record, html, "surname", { text: surname, context: matchedRange });
     }
 
     if (given.length > 0) {
       record.givenNames = given;
-      addProvenance(record, html, "givenNames", given.join(" "));
+      addProvenance(record, html, "givenNames", { text: given.join(" "), context: matchedRange });
     }
   }
 
   if (birthYear && !record.birth.year) {
     record.birth.year = birthYear;
-    addProvenance(record, html, "birth.year", String(birthYear));
+    addProvenance(record, html, "birth.year", { text: String(birthYear), context: matchedRange });
   }
 
   if (deathYear && !record.death.year) {
     record.death.year = deathYear;
-    addProvenance(record, html, "death.year", String(deathYear));
+    addProvenance(record, html, "death.year", { text: String(deathYear), context: matchedRange });
   }
 
   if (matchedText) {
-    addProvenance(record, html, "name.heading", matchedText);
+    if (matchedRange) {
+      addProvenance(record, html, "name.heading", matchedRange);
+    } else {
+      addProvenance(record, html, "name.heading", { text: matchedText });
+    }
   }
 }
 
@@ -330,26 +514,44 @@ function handleLabelValue(
   label: string,
   value: string,
   record: IndividualRecord,
-  provenanceText: string
+  provenance: { context?: Range; valueRange?: Range },
 ) {
   const normalizedLabel = normalizeForComparison(label);
+  const trimmedValue = value.trim();
+  const contextRange = provenance.valueRange ?? provenance.context;
+  const valueSource: ProvenanceSource =
+    provenance.valueRange ?? (trimmedValue ? { text: trimmedValue, context: contextRange } : { text: value });
+  const contextualText = (text: string): ProvenanceSource => {
+    if (!text) {
+      return { text };
+    }
+    if (provenance.valueRange) {
+      return { text, context: provenance.valueRange };
+    }
+    if (contextRange) {
+      return { text, context: contextRange };
+    }
+    return { text };
+  };
 
   if (labelMatches(label, "maiden")) {
-    record.maidenName = value.trim();
-    addProvenance(record, html, "maidenName", value.trim());
+    record.maidenName = trimmedValue;
+    addProvenance(record, html, "maidenName", valueSource);
   } else if (labelMatches(label, "surname")) {
-    record.surname = value.trim();
-    addProvenance(record, html, "surname", value.trim());
+    record.surname = trimmedValue;
+    addProvenance(record, html, "surname", valueSource);
   } else if (labelMatches(label, "given")) {
     const parts = value.split(/[,;]+|\s+/).map((part) => part.trim()).filter(Boolean);
     record.givenNames = parts;
-    addProvenance(record, html, "givenNames", value.trim());
+    if (parts.length) {
+      addProvenance(record, html, "givenNames", valueSource);
+    }
   } else if (labelMatches(label, "name")) {
-    const trimmed = value.trim();
+    const trimmed = trimmedValue;
     const maidenMatch = trimmed.match(/\bn[eé]e\s+([A-Za-z'’\-]+)/i);
     if (maidenMatch) {
       record.maidenName = maidenMatch[1];
-      addProvenance(record, html, "maidenName", maidenMatch[1]);
+      addProvenance(record, html, "maidenName", contextualText(maidenMatch[1]));
     }
 
     const cleaned = trimmed
@@ -359,142 +561,222 @@ function handleLabelValue(
     const tokens = cleaned.split(/\s+/).filter(Boolean);
     if (tokens.length > 0) {
       record.surname = tokens[tokens.length - 1];
-      addProvenance(record, html, "surname", tokens[tokens.length - 1]);
+      addProvenance(record, html, "surname", contextualText(tokens[tokens.length - 1]));
       record.givenNames = tokens.slice(0, -1);
       if (record.givenNames.length) {
-        addProvenance(record, html, "givenNames", record.givenNames.join(" "));
+        addProvenance(record, html, "givenNames", contextualText(record.givenNames.join(" ")));
       }
     }
   } else if (/\b(sex|gender)\b/.test(normalizedLabel)) {
     const normalizedSex = normalizeSex(value);
     if (normalizedSex) {
       record.sex = normalizedSex;
-      addProvenance(record, html, "sex", value.trim());
+      addProvenance(record, html, "sex", valueSource);
     }
   } else if (labelMatches(label, "birth")) {
-    record.birth.raw = value.trim();
+    record.birth.raw = trimmedValue;
     const parsed = parseDateFragment(value);
     if (parsed.year !== undefined) {
       record.birth.year = parsed.year;
+      addProvenance(record, html, "birth.year", contextualText(String(parsed.year)));
     }
     if (parsed.month !== undefined) {
       record.birth.month = parsed.month;
+      addProvenance(record, html, "birth.month", contextualText(String(parsed.month)));
     }
     if (parsed.day !== undefined) {
       record.birth.day = parsed.day;
+      addProvenance(record, html, "birth.day", contextualText(String(parsed.day)));
     }
     if (parsed.year !== undefined || parsed.month !== undefined || parsed.day !== undefined) {
       record.birth.approx = parsed.approx;
+      addProvenance(record, html, "birth.approx", valueSource);
     }
-    addProvenance(record, html, "birth.raw", provenanceText.trim());
+    addProvenance(record, html, "birth.raw", valueSource);
   } else if (labelMatches(label, "death")) {
-    record.death.raw = value.trim();
+    record.death.raw = trimmedValue;
     const parsed = parseDateFragment(value);
     if (parsed.year !== undefined) {
       record.death.year = parsed.year;
+      addProvenance(record, html, "death.year", contextualText(String(parsed.year)));
     }
     if (parsed.month !== undefined) {
       record.death.month = parsed.month;
+      addProvenance(record, html, "death.month", contextualText(String(parsed.month)));
     }
     if (parsed.day !== undefined) {
       record.death.day = parsed.day;
+      addProvenance(record, html, "death.day", contextualText(String(parsed.day)));
     }
     if (parsed.year !== undefined || parsed.month !== undefined || parsed.day !== undefined) {
       record.death.approx = parsed.approx;
+      addProvenance(record, html, "death.approx", valueSource);
     }
-    addProvenance(record, html, "death.raw", provenanceText.trim());
+    addProvenance(record, html, "death.raw", valueSource);
   } else if (labelMatches(label, "residence")) {
     const entries = value
       .split(/[,;\n]+/)
       .map((part) => part.trim())
       .filter(Boolean);
+    const valueSlice =
+      provenance.valueRange && provenance.valueRange.end > provenance.valueRange.start
+        ? html.slice(provenance.valueRange.start, provenance.valueRange.end)
+        : trimmedValue;
+    let searchOffset = 0;
     entries.forEach((entry) => {
       const parsed = parseDateFragment(entry);
       record.residences.push({ raw: entry, year: parsed.year });
-      addProvenance(record, html, `residences[${record.residences.length - 1}].raw`, entry);
+      let entryRange: Range | undefined;
+      if (provenance.valueRange) {
+        const relativeIndex = valueSlice.indexOf(entry, searchOffset);
+        if (relativeIndex !== -1) {
+          entryRange = {
+            start: provenance.valueRange.start + relativeIndex,
+            end: provenance.valueRange.start + relativeIndex + entry.length,
+          };
+          searchOffset = relativeIndex + entry.length;
+        }
+      }
+      addProvenance(
+        record,
+        html,
+        `residences[${record.residences.length - 1}].raw`,
+        entryRange ?? contextualText(entry),
+      );
     });
   } else if (labelMatches(label, "father")) {
-    record.parents.father = value.trim();
-    addProvenance(record, html, "parents.father", value.trim());
+    record.parents.father = trimmedValue;
+    addProvenance(record, html, "parents.father", valueSource);
   } else if (labelMatches(label, "mother")) {
-    record.parents.mother = value.trim();
-    addProvenance(record, html, "parents.mother", value.trim());
+    record.parents.mother = trimmedValue;
+    addProvenance(record, html, "parents.mother", valueSource);
   } else if (labelMatches(label, "spouse")) {
     const entries = value
       .split(/[,;\n]+/)
       .map((part) => part.trim())
       .filter(Boolean);
+    const valueSlice =
+      provenance.valueRange && provenance.valueRange.end > provenance.valueRange.start
+        ? html.slice(provenance.valueRange.start, provenance.valueRange.end)
+        : trimmedValue;
+    let searchOffset = 0;
     entries.forEach((entry) => {
       pushUnique(record.spouses, entry);
-      addProvenance(record, html, "spouses", entry);
+      let entryRange: Range | undefined;
+      if (provenance.valueRange) {
+        const relativeIndex = valueSlice.indexOf(entry, searchOffset);
+        if (relativeIndex !== -1) {
+          entryRange = {
+            start: provenance.valueRange.start + relativeIndex,
+            end: provenance.valueRange.start + relativeIndex + entry.length,
+          };
+          searchOffset = relativeIndex + entry.length;
+        }
+      }
+      addProvenance(record, html, "spouses", entryRange ?? contextualText(entry));
     });
   } else if (labelMatches(label, "child")) {
     const entries = value
       .split(/[,;\n]+/)
       .map((part) => part.trim())
       .filter(Boolean);
+    const valueSlice =
+      provenance.valueRange && provenance.valueRange.end > provenance.valueRange.start
+        ? html.slice(provenance.valueRange.start, provenance.valueRange.end)
+        : trimmedValue;
+    let searchOffset = 0;
     entries.forEach((entry) => {
       pushUnique(record.children, entry);
-      addProvenance(record, html, "children", entry);
+      let entryRange: Range | undefined;
+      if (provenance.valueRange) {
+        const relativeIndex = valueSlice.indexOf(entry, searchOffset);
+        if (relativeIndex !== -1) {
+          entryRange = {
+            start: provenance.valueRange.start + relativeIndex,
+            end: provenance.valueRange.start + relativeIndex + entry.length,
+          };
+          searchOffset = relativeIndex + entry.length;
+        }
+      }
+      addProvenance(record, html, "children", entryRange ?? contextualText(entry));
     });
   } else if (labelMatches(label, "occupation")) {
-    record.occupation = value.trim();
-    addProvenance(record, html, "occupation", value.trim());
+    record.occupation = trimmedValue;
+    addProvenance(record, html, "occupation", valueSource);
   } else if (labelMatches(label, "religion")) {
-    record.religion = value.trim();
-    addProvenance(record, html, "religion", value.trim());
+    record.religion = trimmedValue;
+    addProvenance(record, html, "religion", valueSource);
   } else if (/\bnotes\b/.test(normalizedLabel)) {
-    record.notes = value.trim();
-    addProvenance(record, html, "notes", provenanceText.trim());
+    record.notes = trimmedValue;
+    addProvenance(record, html, "notes", valueSource);
   }
 }
 
 function extractLabelValuePairs(html: string, record: IndividualRecord, $: ReturnType<typeof load>) {
   const processed = new Set<string>();
 
-  const processPair = (label: string, value: string, provenanceText: string) => {
-    if (!label || !value) {
+  const processPair = (label: string, rawValue: string, provenance: { context?: Range; valueRange?: Range }) => {
+    if (!label || !rawValue) {
       return;
     }
-    const key = `${label.trim().toLowerCase()}::${value.trim()}`;
+    const trimmedLabel = label.trim();
+    const trimmedValue = rawValue.trim();
+    if (!trimmedLabel || !trimmedValue) {
+      return;
+    }
+    const key = `${trimmedLabel.toLowerCase()}::${trimmedValue}`;
     if (processed.has(key)) {
       return;
     }
     processed.add(key);
-    handleLabelValue(html, label, value.trim(), record, provenanceText);
+    handleLabelValue(html, trimmedLabel, rawValue, record, provenance);
   };
 
-  $("*").each((_, element) => {
-    const text = $(element)
-      .contents()
-      .filter((_, node) => node.type === "text")
-      .map((_, node) => (node.data ?? "").trim())
-      .get()
-      .join(" ")
-      .trim();
-
-    if (!text || !text.includes(":")) {
-      return;
-    }
-
-    const segments = text
-      .split(/\r?\n/)
-      .map((segment) => segment.trim())
-      .filter(Boolean);
-
-    segments.forEach((segment) => {
-      if (!segment.includes(":")) {
+  const root = $.root()[0] as AnyNode | undefined;
+  if (root) {
+    traverseNodes(root, (node) => {
+      if ((node as { type?: string }).type !== "text") {
         return;
       }
-      const normalizedSegment = segment.replace(/\s+/g, " ");
-      const [label, rawValue] = normalizedSegment.split(/:(.+)/).slice(0, 2) as [string, string];
-      if (!label || !rawValue) {
+      const data = (node as { data?: string }).data ?? "";
+      if (!data || !data.includes(":")) {
+        return;
+      }
+      const nodeRange = getLocationRange(node);
+      if (!nodeRange) {
         return;
       }
 
-      processPair(label, rawValue, segment);
+      const linePattern = /[^\r\n]+/g;
+      let match: RegExpExecArray | null;
+      while ((match = linePattern.exec(data)) !== null) {
+        const segment = match[0];
+        const colonIndex = segment.indexOf(":");
+        if (colonIndex === -1) {
+          continue;
+        }
+
+        const label = segment.slice(0, colonIndex).trim();
+        const rawValue = segment.slice(colonIndex + 1);
+        if (!label || !rawValue.trim()) {
+          continue;
+        }
+
+        const lineStart = nodeRange.start + match.index;
+        const leadingWhitespace = rawValue.length - rawValue.trimStart().length;
+        const trailingWhitespace = rawValue.length - rawValue.trimEnd().length;
+        const valueStart = lineStart + colonIndex + 1 + leadingWhitespace;
+        const valueEnd = lineStart + colonIndex + 1 + rawValue.length - trailingWhitespace;
+        const valueRange = valueEnd > valueStart ? { start: valueStart, end: valueEnd } : undefined;
+        const contextRange: Range = {
+          start: lineStart,
+          end: lineStart + segment.length,
+        };
+
+        processPair(label, rawValue, { context: contextRange, valueRange });
+      }
     });
-  });
+  }
 
   $("tr").each((_, row) => {
     const cells = $(row).children("th,td");
@@ -502,40 +784,58 @@ function extractLabelValuePairs(html: string, record: IndividualRecord, $: Retur
       return;
     }
 
-    const label = $(cells[0]).text().trim();
+    const label = $(cells[0]).text();
     const value = cells
       .slice(1)
-      .map((_, cell) => $(cell).text().trim())
+      .map((_, cell) => $(cell).text())
       .get()
-      .filter(Boolean)
       .join(" ");
 
-    if (label && value) {
-      processPair(label, value, value);
+    if (!label || !value.trim()) {
+      return;
     }
+
+    const rowNode = row as unknown as AnyNode;
+    const valueNodes = cells
+      .slice(1)
+      .map((_, cell) => cell as unknown as AnyNode)
+      .get();
+    const contextRange = getTextRangeFromNode(rowNode) ?? getInnerRange(rowNode);
+    const valueRange = getRangeForNodes(valueNodes);
+
+    processPair(label, value, { context: contextRange ?? valueRange, valueRange });
   });
 
   $("dt").each((_, dt) => {
-    const label = $(dt).text().trim();
+    const label = $(dt).text();
     const dd = $(dt).next("dd");
     if (!label || !dd.length) {
       return;
     }
 
     const value = dd
-      .map((_, node) => $(node).text().trim())
+      .map((_, node) => $(node).text())
       .get()
-      .filter(Boolean)
       .join(" ");
 
-    if (value) {
-      processPair(label, value, value);
+    if (!value.trim()) {
+      return;
     }
+
+    const dtNode = dt as unknown as AnyNode;
+    const ddNodes = dd.map((_, node) => node as unknown as AnyNode).get();
+    const contextRange = mergeRanges([
+      getTextRangeFromNode(dtNode),
+      ...ddNodes.map((node) => getTextRangeFromNode(node) ?? getInnerRange(node)),
+    ]);
+    const valueRange = getRangeForNodes(ddNodes);
+
+    processPair(label, value, { context: contextRange ?? valueRange, valueRange });
   });
 }
 
 export function extractIndividual(html: string): IndividualRecord {
-  const $ = load(html);
+  const $ = load(html, { sourceCodeLocationInfo: true });
   const record = createRecordSkeleton(html);
 
   extractFullNameFromHeadings(html, record, $);
@@ -545,7 +845,7 @@ export function extractIndividual(html: string): IndividualRecord {
     const nameFromSurname = record.surname;
     const start = html.indexOf(nameFromSurname);
     if (start !== -1) {
-      addProvenance(record, html, "surname", nameFromSurname);
+      addProvenance(record, html, "surname", { start, end: start + nameFromSurname.length });
     }
   }
 
