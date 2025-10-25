@@ -2,12 +2,22 @@ import { describe, expect, it } from "vitest";
 import { parsePlace } from "../places";
 
 describe("parsePlace", () => {
-  it("returns trimmed place and country tokens", () => {
-    const result = parsePlace("Paris, France");
+  it("identifies French cities, departments, and countries", () => {
+    const result = parsePlace("Lyon, Rhône, France");
     expect(result).toEqual({
-      place: "Paris, France",
-      tokens: ["France"],
+      place: "Lyon, Rhône, France",
+      tokens: ["Lyon", "Rhône", "France"],
       matches: [
+        {
+          fragment: "Lyon",
+          canonical: "Lyon",
+          category: "city",
+        },
+        {
+          fragment: "Rhône",
+          canonical: "Rhône",
+          category: "department",
+        },
         {
           fragment: "France",
           canonical: "France",
@@ -17,60 +27,55 @@ describe("parsePlace", () => {
     });
   });
 
-  it("handles states and country abbreviations", () => {
-    const result = parsePlace("Salt Lake City, Utah, USA");
+  it("maps department codes to their canonical city when available", () => {
+    const result = parsePlace("75, France");
     expect(result).toEqual({
-      place: "Salt Lake City, Utah, USA",
-      tokens: ["Utah", "United States"],
+      place: "75, France",
+      tokens: ["Paris", "France"],
       matches: [
         {
-          fragment: "Utah",
-          canonical: "Utah",
-          category: "state",
+          fragment: "75",
+          canonical: "Paris",
+          category: "city",
         },
         {
-          fragment: "USA",
-          canonical: "United States",
+          fragment: "France",
+          canonical: "France",
           category: "country",
         },
       ],
     });
   });
 
-  it("preserves aliases for the same location", () => {
-    const result = parsePlace("New York, NY, USA");
+  it("recognizes regional aliases", () => {
+    const result = parsePlace("Brittany, France");
     expect(result).toEqual({
-      place: "New York, NY, USA",
-      tokens: ["New York", "United States"],
+      place: "Brittany, France",
+      tokens: ["Bretagne", "France"],
       matches: [
         {
-          fragment: "New York",
-          canonical: "New York",
-          category: "state",
+          fragment: "Brittany",
+          canonical: "Bretagne",
+          category: "region",
         },
         {
-          fragment: "NY",
-          canonical: "New York",
-          category: "state",
-        },
-        {
-          fragment: "USA",
-          canonical: "United States",
+          fragment: "France",
+          canonical: "France",
           category: "country",
         },
       ],
     });
   });
 
-  it("splits on semicolons and ignores unrecognized tokens", () => {
-    const result = parsePlace("Berlin; Germany; Europe");
+  it("ignores fragments that cannot be matched", () => {
+    const result = parsePlace("Atlantis; France");
     expect(result).toEqual({
-      place: "Berlin; Germany; Europe",
-      tokens: ["Germany"],
+      place: "Atlantis; France",
+      tokens: ["France"],
       matches: [
         {
-          fragment: "Germany",
-          canonical: "Germany",
+          fragment: "France",
+          canonical: "France",
           category: "country",
         },
       ],
