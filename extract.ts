@@ -308,11 +308,13 @@ export function parseDateFragment(text: string): ParsedDateFragment {
   if (results.length) {
     const result = results[0];
     const components = result.start;
-    const known = components?.knownValues ?? {};
-    const implied = components?.impliedValues ?? {};
-    const year = known.year ?? implied.year;
-    const month = known.month;
-    const day = known.day;
+    const getComponent = (component: chrono.Component): number | undefined => {
+      const value = components?.get(component);
+      return typeof value === "number" ? value : undefined;
+    };
+    const year = getComponent("year");
+    const month = components?.isCertain("month") ? getComponent("month") : undefined;
+    const day = components?.isCertain("day") ? getComponent("day") : undefined;
 
     if (year !== undefined || month !== undefined || day !== undefined) {
       const onlyYear = year !== undefined && month === undefined && day === undefined;

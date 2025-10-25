@@ -4,6 +4,8 @@
   "description": "Entity resolution and family linkage engine for genealogical data \u2014 built with Node, React, and TypeScript",
   "type": "module",
   "scripts": {
+    "dev": "tsx watch cli.ts",
+    "start": "tsx apps/demo.ts",
     "test": "vitest run"
   },
   "dependencies": {
