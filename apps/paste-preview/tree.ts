@@ -74,6 +74,24 @@ export function initializeTreePage(): void {
   function renderTree(): void {
     container.replaceChildren();
 
+    const recordCount = latestState.records.length;
+    const individualCount = latestState.individuals.length;
+    const navRecordCount = document.getElementById("nav-record-count");
+    const navIndividualCount = document.getElementById("nav-individual-count");
+    const treeMetric = document.getElementById("metric-tree-individuals");
+
+    if (navRecordCount) {
+      navRecordCount.textContent = recordCount.toString();
+    }
+
+    if (navIndividualCount) {
+      navIndividualCount.textContent = individualCount.toString();
+    }
+
+    if (treeMetric) {
+      treeMetric.textContent = individualCount.toString();
+    }
+
     if (!latestState.individuals.length) {
       const empty = document.createElement("div");
       empty.className = "empty-state";

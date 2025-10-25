@@ -7,23 +7,130 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body data-page="settings">
-    <main>
-      <header class="header">
-        <div class="header-meta">
-          <h1>KinGraph Workbench</h1>
-          <p class="status">
-            Manage export/import tasks and curate the canonical profession and place definitions used during extraction.
-          </p>
-        </div>
-        <nav class="tabs" role="tablist">
-          <a class="tab" href="./index.html">Records</a>
-          <a class="tab" href="./individuals.html">Individuals</a>
-          <a class="tab" href="./tree.html">Tree</a>
-          <a class="tab is-active" href="./settings.html">Settings</a>
+    <div class="app-shell">
+      <aside class="app-rail" aria-label="Workspace navigation">
+        <a class="rail-logo" href="./index.html">
+          <span class="rail-logo-mark" aria-hidden="true">KG</span>
+          <span class="rail-logo-text">KinGraph</span>
+        </a>
+        <nav class="rail-nav" aria-label="Primary workspaces">
+          <a class="rail-link" href="./index.html">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linejoin="round"
+                />
+                <path d="M14 3v5h5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+              </svg>
+            </span>
+            <span class="rail-label">Records</span>
+            <span class="rail-badge" id="nav-record-count" aria-hidden="true">0</span>
+          </a>
+          <a class="rail-link" href="./individuals.html">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4 0-7 2-7 4v1h14v-1c0-2-3-4-7-4Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            <span class="rail-label">Individuals</span>
+            <span class="rail-badge" id="nav-individual-count" aria-hidden="true">0</span>
+          </a>
+          <a class="rail-link" href="./tree.html">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M12 20v-6m0 0H7a3 3 0 1 1 0-6h10a3 3 0 1 1 0 6h-5Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <circle cx="12" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+            </span>
+            <span class="rail-label">Tree</span>
+          </a>
+          <a class="rail-link is-active" href="./settings.html" aria-current="page">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="m12 3 1.2 2.4 2.7.3-1.9 2 0.5 2.7L12 9.6l-2.5 1.3 0.5-2.7-1.9-2 2.7-.3L12 3Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M5 13.5a7 7 0 1 0 14 0 7 7 0 1 0-14 0Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            <span class="rail-label">Settings</span>
+          </a>
         </nav>
-      </header>
+        <div class="rail-footer">
+          <button type="button" class="command-button command-button--ghost rail-switcher" aria-label="Switch workspace">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="m6 9-3 3 3 3M18 15l3-3-3-3"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M3 12h18"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </span>
+            <span class="rail-label">Switch workspace</span>
+          </button>
+        </div>
+      </aside>
+      <div class="app-surface">
+        <header class="command-bar">
+          <div class="command-bar-primary">
+            <div>
+              <p class="command-bar-eyebrow">KinGraph Workbench</p>
+              <h1 class="command-title">Settings</h1>
+            </div>
+            <div class="command-metrics">
+              <span class="metric-chip" role="status" aria-live="polite">
+                <span class="metric-label">Definitions</span>
+                <span class="metric-value" id="metric-definition-count">0</span>
+              </span>
+              <span class="metric-chip">
+                <span class="metric-label">Last export</span>
+                <span class="metric-value">—</span>
+              </span>
+            </div>
+          </div>
+          <div class="command-actions">
+            <a class="command-button" href="#profession-form">Manage professions</a>
+            <a class="command-button command-button--primary" href="#export-data">Export data</a>
+          </div>
+        </header>
+        <main class="workspace" id="main-content">
+          <section class="workspace-content" aria-labelledby="workspace-description">
+            <p class="workspace-description" id="workspace-description">
+              Manage export/import tasks and curate the canonical profession and place definitions used during extraction.
+            </p>
 
-      <section class="view secondary-grid">
+            <section class="view secondary-grid">
         <section class="panel">
           <header>
             <h2>Data management</h2>
@@ -101,8 +208,11 @@
           </form>
           <div id="place-list" class="settings-list"></div>
         </section>
-      </section>
-    </main>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
 
     <script type="module" src="./main.ts"></script>
   </body>

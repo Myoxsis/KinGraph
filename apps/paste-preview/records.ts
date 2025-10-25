@@ -231,6 +231,19 @@ export function initializeRecordsPage(): void {
 
   function renderConfidence(record: IndividualRecord, scores: ConfidenceScores): void {
     const rows = buildFieldRows(record, scores);
+    const averageElement = document.getElementById("metric-confidence-score");
+    const confidenceValues = rows
+      .map((row) => row.confidence)
+      .filter((value): value is number => value !== undefined);
+
+    if (averageElement) {
+      if (confidenceValues.length) {
+        const average = confidenceValues.reduce((total, value) => total + value, 0) / confidenceValues.length;
+        averageElement.textContent = `${Math.round(average * 100)}%`;
+      } else {
+        averageElement.textContent = "—";
+      }
+    }
 
     if (!rows.length) {
       const emptyMessage = document.createElement("p");
@@ -369,6 +382,24 @@ export function initializeRecordsPage(): void {
   }
 
   function renderSavedRecords(state: ReturnType<typeof getState>): void {
+    const recordCount = state.records.length;
+    const individualCount = state.individuals.length;
+    const navRecordCount = document.getElementById("nav-record-count");
+    const navIndividualCount = document.getElementById("nav-individual-count");
+    const recordMetric = document.getElementById("metric-record-count");
+
+    if (navRecordCount) {
+      navRecordCount.textContent = recordCount.toString();
+    }
+
+    if (navIndividualCount) {
+      navIndividualCount.textContent = individualCount.toString();
+    }
+
+    if (recordMetric) {
+      recordMetric.textContent = recordCount.toString();
+    }
+
     if (!state.records.length) {
       const empty = document.createElement("div");
       empty.className = "empty-state";
@@ -444,6 +475,10 @@ export function initializeRecordsPage(): void {
     provenanceCount.hidden = true;
     provenanceCount.textContent = "";
     reextractButton.disabled = true;
+    const averageElement = document.getElementById("metric-confidence-score");
+    if (averageElement) {
+      averageElement.textContent = "—";
+    }
   }
 
   function handleInput(): void {
