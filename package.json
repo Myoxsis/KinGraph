@@ -11,12 +11,12 @@
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
     "chrono-node": "^2.6.1",
+    "tsx": "^4.7.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "typescript": "^5.4.5",
-    "vitest": "^1.5.0",
-    "tsx": "^4.7.2"
+    "vitest": "^1.5.0"
   },
   "bin": {
     "kingraph-extract": "tsx cli.ts"
