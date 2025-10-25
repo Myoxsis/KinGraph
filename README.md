@@ -27,7 +27,19 @@ Start the lightweight development server for the paste preview interface (the ap
 npm start
 ```
 
-This serves the app at [http://localhost:5173](http://localhost:5173). The left text area accepts raw HTML, while the right pane shows the structured record and provenance information extracted from the pasted content.
+This uses [Vite](https://vitejs.dev/) under the hood and serves the app at [http://localhost:5173](http://localhost:5173) by default (or whatever port you provide through the `PORT` environment variable). The left text area accepts raw HTML, while the right pane shows the structured record and provenance information extracted from the pasted content.
+
+To create a production bundle of the paste preview app, run:
+
+```bash
+npm run build
+```
+
+You can preview the built assets locally with:
+
+```bash
+npm run preview
+```
 
 ### Command-line demo
 Run the console demo against the sample fixture with:
@@ -40,6 +52,12 @@ npm run demo
 Execute the unit test suite with:
 ```bash
 npm test
+```
+
+Run a full type check without emitting build artifacts via:
+
+```bash
+npm run typecheck
 ```
 
 ## Project Structure

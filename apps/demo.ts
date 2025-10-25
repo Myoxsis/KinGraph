@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import process from "node:process";
 import { extractIndividual } from "../extract";
 import { scoreConfidence } from "../confidence";
 import { IndividualRecordSchema } from "../schema";
