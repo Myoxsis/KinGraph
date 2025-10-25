@@ -167,6 +167,133 @@ textarea {
   min-height: 360px;
 }
 
+.profile-editor {
+  display: grid;
+  gap: 20px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.profile-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.profile-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #38bdf8;
+}
+
+.field-grid {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 960px) {
+  .field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.6);
+  padding: 14px;
+}
+
+.field-block label {
+  margin-bottom: 0;
+}
+
+.field-block textarea,
+.field-block input,
+.field-block select {
+  min-height: auto;
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.field-block textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.field-block textarea[data-size="small"] {
+  min-height: 72px;
+}
+
+.field-block textarea[data-size="large"] {
+  min-height: 140px;
+}
+
+.field-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.field-suggestions .empty-message {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.suggestion {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.12);
+  color: #bae6fd;
+  border-radius: 12px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.suggestion:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #e0f2fe;
+}
+
+.suggestion.is-active {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: rgba(56, 189, 248, 0.9);
+}
+
+.suggestion-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.suggestion-meta {
+  font-size: 0.75rem;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.field-helper {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #fca5a5;
+}
+
+.field-helper[hidden] {
+  display: none;
+}
+
 .stack {
   gap: 20px;
 }

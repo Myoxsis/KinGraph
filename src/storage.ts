@@ -19,10 +19,30 @@ export interface StoredPlaceDefinition {
   updatedAt: string;
 }
 
+export interface IndividualProfile {
+  givenNames: string[];
+  surname?: string;
+  maidenName?: string;
+  aliases: string[];
+  sex?: IndividualRecord["sex"];
+  birth: IndividualRecord["birth"];
+  death: IndividualRecord["death"];
+  residences: IndividualRecord["residences"];
+  parents: IndividualRecord["parents"];
+  spouses: string[];
+  children: string[];
+  siblings: string[];
+  occupation?: string;
+  religion?: string;
+  notes?: string;
+}
+
 export interface StoredIndividual {
   id: string;
   name: string;
   notes: string;
+  profile: IndividualProfile;
+  profileUpdatedAt: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +72,156 @@ type StoreName = (typeof STORE_NAMES)[number];
 const defaultState: PersistedState = createDefaultState();
 let state: PersistedState = cloneState(defaultState);
 const listeners = new Set<StateListener>();
+
+function sanitizeString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
+}
+
+function sanitizeNumber(value: unknown): number | undefined {
+  if (typeof value !== "number") {
+    if (typeof value === "string" && value.trim().length) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
+  }
+
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function sanitizeBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  return undefined;
+}
+
+export function createEmptyProfile(): IndividualProfile {
+  return {
+    givenNames: [],
+    surname: undefined,
+    maidenName: undefined,
+    aliases: [],
+    sex: undefined,
+    birth: {},
+    death: {},
+    residences: [],
+    parents: {},
+    spouses: [],
+    children: [],
+    siblings: [],
+    occupation: undefined,
+    religion: undefined,
+    notes: undefined,
+  };
+}
+
+function cloneProfile(profile: IndividualProfile): IndividualProfile {
+  if (typeof structuredClone === "function") {
+    return structuredClone(profile);
+  }
+
+  return JSON.parse(JSON.stringify(profile)) as IndividualProfile;
+}
+
+export function normalizeProfile(
+  input: Partial<IndividualProfile> | IndividualProfile | undefined,
+): IndividualProfile {
+  const profile = createEmptyProfile();
+
+  if (!input) {
+    return profile;
+  }
+
+  profile.givenNames = Array.isArray(input.givenNames)
+    ? input.givenNames.map((name) => sanitizeString(name) ?? "").filter((name) => name.length)
+    : [];
+
+  profile.surname = sanitizeString(input.surname);
+  profile.maidenName = sanitizeString(input.maidenName);
+  profile.aliases = Array.isArray(input.aliases)
+    ? input.aliases.map((alias) => sanitizeString(alias) ?? "").filter((alias) => alias.length)
+    : [];
+  profile.sex = typeof input.sex === "string" && ["M", "F", "U"].includes(input.sex)
+    ? (input.sex as IndividualRecord["sex"])
+    : undefined;
+
+  const birthSource = input.birth ?? {};
+  profile.birth = {
+    raw: sanitizeString(birthSource.raw),
+    year: sanitizeNumber(birthSource.year),
+    month: sanitizeNumber(birthSource.month),
+    day: sanitizeNumber(birthSource.day),
+    approx: sanitizeBoolean(birthSource.approx),
+    place: sanitizeString(birthSource.place),
+  };
+
+  const deathSource = input.death ?? {};
+  profile.death = {
+    raw: sanitizeString(deathSource.raw),
+    year: sanitizeNumber(deathSource.year),
+    month: sanitizeNumber(deathSource.month),
+    day: sanitizeNumber(deathSource.day),
+    approx: sanitizeBoolean(deathSource.approx),
+    place: sanitizeString(deathSource.place),
+  };
+
+  profile.residences = Array.isArray(input.residences)
+    ? input.residences
+        .map((residence) => {
+          if (!residence || typeof residence !== "object") {
+            return null;
+          }
+
+          const normalized = {
+            raw: sanitizeString((residence as { raw?: unknown }).raw),
+            year: sanitizeNumber((residence as { year?: unknown }).year),
+            place: sanitizeString((residence as { place?: unknown }).place),
+          };
+
+          if (normalized.raw || normalized.year !== undefined || normalized.place) {
+            return normalized;
+          }
+
+          return null;
+        })
+        .filter((value): value is IndividualRecord["residences"][number] => value !== null)
+    : [];
+
+  profile.parents = {
+    father: sanitizeString(input.parents?.father),
+    mother: sanitizeString(input.parents?.mother),
+  };
+
+  profile.spouses = Array.isArray(input.spouses)
+    ? input.spouses.map((spouse) => sanitizeString(spouse) ?? "").filter((spouse) => spouse.length)
+    : [];
+  profile.children = Array.isArray(input.children)
+    ? input.children.map((child) => sanitizeString(child) ?? "").filter((child) => child.length)
+    : [];
+  profile.siblings = Array.isArray(input.siblings)
+    ? input.siblings.map((sibling) => sanitizeString(sibling) ?? "").filter((sibling) => sibling.length)
+    : [];
+
+  profile.occupation = sanitizeString(input.occupation);
+  profile.religion = sanitizeString(input.religion);
+
+  if (typeof input.notes === "string") {
+    const trimmed = input.notes.trim();
+    profile.notes = trimmed.length ? trimmed : undefined;
+  }
+
+  return profile;
+}
+
+export function cloneIndividualProfile(profile: IndividualProfile): IndividualProfile {
+  return cloneProfile(profile);
+}
 
 let databasePromise: Promise<IDBDatabase | null> | null = null;
 
@@ -239,7 +409,10 @@ function cloneRecord(record: IndividualRecord): IndividualRecord {
 
 function cloneState(value: PersistedState): PersistedState {
   return {
-    individuals: value.individuals.map((individual) => ({ ...individual })),
+    individuals: value.individuals.map((individual) => ({
+      ...individual,
+      profile: cloneProfile(individual.profile),
+    })),
     records: value.records.map((record) => ({
       ...record,
       record: cloneRecord(record.record),
@@ -268,13 +441,24 @@ function normalizeState(value: Partial<PersistedState>): PersistedState {
       .filter((item): item is StoredIndividual =>
         Boolean(item && typeof item.id === "string" && typeof item.name === "string"),
       )
-      .map((item) => ({
-        id: item.id,
-        name: item.name,
-        notes: typeof item.notes === "string" ? item.notes : "",
-        createdAt: item.createdAt ?? new Date().toISOString(),
-        updatedAt: item.updatedAt ?? item.createdAt ?? new Date().toISOString(),
-      })),
+      .map((item) => {
+        const createdAt = item.createdAt ?? new Date().toISOString();
+        const updatedAt = item.updatedAt ?? createdAt;
+        const profileSource = (item as { profile?: Partial<IndividualProfile> }).profile;
+        const profile = normalizeProfile(profileSource);
+        const profileUpdatedAt =
+          (item as { profileUpdatedAt?: string }).profileUpdatedAt ?? updatedAt ?? createdAt;
+
+        return {
+          id: item.id,
+          name: item.name,
+          notes: typeof item.notes === "string" ? item.notes : "",
+          profile,
+          profileUpdatedAt,
+          createdAt,
+          updatedAt,
+        } satisfies StoredIndividual;
+      }),
     records: records
       .filter((item): item is StoredRecord =>
         Boolean(item && typeof item.id === "string" && typeof item.individualId === "string" && item.record),
@@ -413,6 +597,8 @@ export async function createIndividual(name: string): Promise<StoredIndividual> 
     id: generateId(),
     name,
     notes: "",
+    profile: createEmptyProfile(),
+    profileUpdatedAt: now,
     createdAt: now,
     updatedAt: now,
   };
@@ -447,6 +633,28 @@ export async function updateIndividual(
   }
 
   target.updatedAt = new Date().toISOString();
+  await commit(next);
+  return target;
+}
+
+export async function updateIndividualProfile(
+  id: string,
+  profile: IndividualProfile,
+): Promise<StoredIndividual | null> {
+  await initialization;
+  const next = cloneState(state);
+  const target = next.individuals.find((individual) => individual.id === id);
+
+  if (!target) {
+    return null;
+  }
+
+  const normalized = normalizeProfile(profile);
+  target.profile = normalized;
+  const timestamp = new Date().toISOString();
+  target.profileUpdatedAt = timestamp;
+  target.updatedAt = timestamp;
+
   await commit(next);
   return target;
 }
