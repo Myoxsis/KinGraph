@@ -1,6 +1,6 @@
 import { highlight } from "../../../highlight";
 import type { IndividualRecord } from "../../../schema";
-import type { StoredRecord } from "@/storage";
+import type { IndividualProfile, StoredRecord } from "@/storage";
 
 type DateFragment = IndividualRecord["birth"];
 
@@ -168,9 +168,11 @@ export function getSuggestedIndividualName(record: IndividualRecord): string {
   return "Unnamed individual";
 }
 
-export function formatLifespan(record: IndividualRecord): string {
-  const birthYear = record.birth.year ? record.birth.year.toString() : "";
-  const deathYear = record.death.year ? record.death.year.toString() : "";
+type LifespanSource = Pick<IndividualRecord, "birth" | "death"> | Pick<IndividualProfile, "birth" | "death">;
+
+export function formatLifespan(source: LifespanSource): string {
+  const birthYear = source.birth.year ? source.birth.year.toString() : "";
+  const deathYear = source.death.year ? source.death.year.toString() : "";
 
   if (!birthYear && !deathYear) {
     return "";
