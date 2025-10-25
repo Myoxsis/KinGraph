@@ -1,4 +1,4 @@
-import { load } from "cheerio";
+import { load, type CheerioAPI } from "cheerio";
 import type { AnyNode } from "domhandler";
 import * as chrono from "chrono-node";
 import { IndividualRecordSchema, type IndividualRecord } from "./schema";
@@ -416,6 +416,290 @@ export function parseName(full: string): ParsedName {
   };
 }
 
+type LifeEventType = "birth" | "death";
+
+interface GenewebLifeEvent {
+  type: LifeEventType;
+  raw: string;
+  date: string;
+}
+
+function parseGenewebLifeEvent(text: string): GenewebLifeEvent | undefined {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  const birthMatch = normalized.match(/^(Born|Baptized|Christened)\s+(.*)$/i);
+  const deathMatch = normalized.match(/^(Deceased|Died)\s+(.*)$/i);
+
+  let type: LifeEventType | undefined;
+  let remainder: string | undefined;
+
+  if (birthMatch) {
+    type = "birth";
+    remainder = birthMatch[2];
+  } else if (deathMatch) {
+    type = "death";
+    remainder = deathMatch[2];
+  }
+
+  if (!type || !remainder) {
+    return undefined;
+  }
+
+  let cleaned = remainder.trim();
+  if (!cleaned) {
+    return undefined;
+  }
+
+  cleaned = cleaned.replace(/,\s*aged[^,]*$/i, "").trim();
+
+  const [datePart] = cleaned.split(/\s+-\s+/);
+  const date = (datePart ?? "").trim();
+
+  if (!date) {
+    return undefined;
+  }
+
+  return {
+    type,
+    raw: cleaned,
+    date,
+  };
+}
+
+function extractGenewebProfile(html: string, record: IndividualRecord, $: CheerioAPI) {
+  const personSection = $("#perso");
+  if (!personSection.length) {
+    return;
+  }
+
+  const nameElement = personSection.find("#person-title h1").first();
+  if (nameElement.length) {
+    const nameNode = nameElement.get(0) as AnyNode | undefined;
+    const nameRange = nameNode
+      ? getTextRangeFromNode(nameNode) ?? getInnerRange(nameNode) ?? getLocationRange(nameNode)
+      : undefined;
+
+    const cloned = nameElement.clone();
+    cloned.find("script, style, img, svg").remove();
+    const nameText = cloned
+      .text()
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const addNameContextProvenance = (field: string, text: string) => {
+      if (!text) {
+        return;
+      }
+      if (nameRange) {
+        addProvenance(record, html, field, { text, context: nameRange });
+      } else {
+        addProvenance(record, html, field, { text });
+      }
+    };
+
+    if (nameText) {
+      const parsed = parseName(nameText);
+      if (parsed.givenNames.length && !record.givenNames.length) {
+        record.givenNames = parsed.givenNames;
+        addNameContextProvenance("givenNames", parsed.givenNames.join(" "));
+      }
+      if (parsed.surname && !record.surname) {
+        record.surname = parsed.surname;
+        addNameContextProvenance("surname", parsed.surname);
+      }
+      if (parsed.maidenName && !record.maidenName) {
+        record.maidenName = parsed.maidenName;
+        addNameContextProvenance("maidenName", parsed.maidenName);
+      }
+      parsed.aliases.forEach((alias) => {
+        pushUnique(record.aliases, alias);
+        addNameContextProvenance("aliases", alias);
+      });
+    }
+
+    if (!record.sex) {
+      const sexIndicator = nameElement.find("img[alt], img[title], img[src]").first();
+      if (sexIndicator.length) {
+        const sexNode = sexIndicator.get(0) as AnyNode | undefined;
+        let descriptor = sexIndicator.attr("alt") ?? sexIndicator.attr("title") ?? "";
+        if (!descriptor) {
+          const src = sexIndicator.attr("src") ?? "";
+          if (/female/i.test(src)) {
+            descriptor = "female";
+          } else if (/male/i.test(src)) {
+            descriptor = "male";
+          }
+        }
+        const normalized = descriptor ? normalizeSex(descriptor) : undefined;
+        if (normalized) {
+          record.sex = normalized;
+          const sexRange = sexNode
+            ? getTextRangeFromNode(sexNode) ?? getInnerRange(sexNode) ?? getLocationRange(sexNode)
+            : undefined;
+          if (sexRange) {
+            addProvenance(record, html, "sex", sexRange);
+          }
+        }
+      }
+    }
+
+    const detailsList = nameElement.closest("#person-title").nextAll("ul").first();
+    if (detailsList.length) {
+      detailsList.children("li").each((_, listItem) => {
+        const text = $(listItem).text();
+        const event = parseGenewebLifeEvent(text);
+        if (!event) {
+          return;
+        }
+
+        const listNode = listItem as unknown as AnyNode;
+        const range = getTextRangeFromNode(listNode) ?? getInnerRange(listNode) ?? getLocationRange(listNode);
+        const parsed = parseDateFragment(event.date);
+        const target = event.type === "birth" ? record.birth : record.death;
+        const fieldPrefix = event.type;
+
+        if (event.raw && !target.raw) {
+          target.raw = event.raw;
+          if (range) {
+            addProvenance(record, html, `${fieldPrefix}.raw`, range);
+          }
+        }
+        if (parsed.year !== undefined && target.year === undefined) {
+          target.year = parsed.year;
+          if (range) {
+            addProvenance(record, html, `${fieldPrefix}.year`, range);
+          }
+        }
+        if (parsed.month !== undefined && target.month === undefined) {
+          target.month = parsed.month;
+          if (range) {
+            addProvenance(record, html, `${fieldPrefix}.month`, range);
+          }
+        }
+        if (parsed.day !== undefined && target.day === undefined) {
+          target.day = parsed.day;
+          if (range) {
+            addProvenance(record, html, `${fieldPrefix}.day`, range);
+          }
+        }
+        if (parsed.approx && !target.approx) {
+          target.approx = true;
+          if (range) {
+            addProvenance(record, html, `${fieldPrefix}.approx`, range);
+          }
+        }
+      });
+    }
+  }
+
+  const headingMatches = (headingNode: AnyNode, keyword: string) => {
+    const text = $(headingNode as unknown as AnyNode)
+      .text()
+      .replace(/\s+/g, " ")
+      .trim();
+    return normalizeForComparison(text).includes(normalizeForComparison(keyword));
+  };
+
+  const parentsHeading = personSection
+    .find("h2")
+    .filter((_, heading) => headingMatches(heading as unknown as AnyNode, "Parents"))
+    .first();
+
+  if (parentsHeading.length) {
+    const parentsList = parentsHeading.nextAll("ul").first();
+    const parentItems = parentsList.children("li");
+
+    const assignParent = (index: number, field: "father" | "mother") => {
+      if (record.parents[field]) {
+        return;
+      }
+      const item = parentItems.eq(index);
+      if (!item.length) {
+        return;
+      }
+      const anchor = item.children("a").first().length ? item.children("a").first() : item.find("a").first();
+      const nameText = anchor.length
+        ? anchor
+            .text()
+            .replace(/\s+/g, " ")
+            .trim()
+        : item
+            .text()
+            .replace(/\s+/g, " ")
+            .trim();
+      if (!nameText) {
+        return;
+      }
+      record.parents[field] = nameText;
+      const node = (anchor.length ? anchor.get(0) : item.get(0)) as AnyNode | undefined;
+      const range = node
+        ? getTextRangeFromNode(node) ?? getInnerRange(node) ?? getLocationRange(node)
+        : undefined;
+      if (range) {
+        addProvenance(record, html, `parents.${field}`, range);
+      }
+    };
+
+    assignParent(0, "father");
+    assignParent(1, "mother");
+  }
+
+  const spousesHeading = personSection
+    .find("h2")
+    .filter((_, heading) => headingMatches(heading as unknown as AnyNode, "Spouses and children"))
+    .first();
+
+  if (spousesHeading.length) {
+    const unionsList = spousesHeading.nextAll("ul").first();
+    unionsList.children("li").each((_, unionItem) => {
+      const unionNode = unionItem as unknown as AnyNode;
+      const unionRange =
+        getTextRangeFromNode(unionNode) ?? getInnerRange(unionNode) ?? getLocationRange(unionNode);
+
+      const spouseAnchor = $(unionItem).children("a").first().length
+        ? $(unionItem).children("a").first()
+        : $(unionItem).find("a").first();
+      const spouseName = spouseAnchor
+        .text()
+        .replace(/\s+/g, " ")
+        .trim();
+      if (spouseName) {
+        pushUnique(record.spouses, spouseName);
+        const spouseNode = spouseAnchor.get(0) as AnyNode | undefined;
+        const range = spouseNode
+          ? getTextRangeFromNode(spouseNode) ?? getInnerRange(spouseNode) ?? getLocationRange(spouseNode)
+          : unionRange;
+        if (range) {
+          addProvenance(record, html, "spouses", range);
+        }
+      }
+
+      const childrenList = $(unionItem).children("ul").first();
+      childrenList.children("li").each((_, childItem) => {
+        const childAnchor = $(childItem).find("a").first();
+        const childName = childAnchor
+          .text()
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!childName) {
+          return;
+        }
+        pushUnique(record.children, childName);
+        const childNode = childAnchor.get(0) as AnyNode | undefined;
+        const childRange = childNode
+          ? getTextRangeFromNode(childNode) ?? getInnerRange(childNode) ?? getLocationRange(childNode)
+          : unionRange;
+        if (childRange) {
+          addProvenance(record, html, "children", childRange);
+        }
+      });
+    });
+  }
+}
+
 function extractFullNameFromHeadings(html: string, record: IndividualRecord, $: ReturnType<typeof load>) {
   const headingSelector = "h1, h2, h3";
   const fullNamePattern = /([A-Z][^()\n]+?)\s*\((\d{4})\s*[\u2013\-]\s*(\d{4})\)/;
@@ -453,7 +737,7 @@ function extractFullNameFromHeadings(html: string, record: IndividualRecord, $: 
   const matchedRange = matchedText ? findRangeByText(html, matchedText, headingContext) ?? headingContext : headingContext;
 
   const maidenMatch = matchedName.match(/\bn[eé]e\s+([A-Za-z'’\-]+)/i);
-  if (maidenMatch) {
+  if (maidenMatch && !record.maidenName) {
     record.maidenName = maidenMatch[1];
     matchedName = matchedName.replace(maidenMatch[0], "").trim();
     addProvenance(record, html, "maidenName", { text: maidenMatch[1], context: matchedRange });
@@ -469,7 +753,7 @@ function extractFullNameFromHeadings(html: string, record: IndividualRecord, $: 
       addProvenance(record, html, "surname", { text: surname, context: matchedRange });
     }
 
-    if (given.length > 0) {
+    if (given.length > 0 && !record.givenNames.length) {
       record.givenNames = given;
       addProvenance(record, html, "givenNames", { text: given.join(" "), context: matchedRange });
     }
@@ -840,6 +1124,12 @@ export function extractIndividual(html: string): IndividualRecord {
   const $ = load(html, { sourceCodeLocationInfo: true });
   const record = createRecordSkeleton(html);
 
+  const canonicalUrl = $("link[rel='canonical']").attr("href");
+  if (canonicalUrl) {
+    record.sourceUrl = canonicalUrl;
+  }
+
+  extractGenewebProfile(html, record, $);
   extractFullNameFromHeadings(html, record, $);
   extractLabelValuePairs(html, record, $);
 
