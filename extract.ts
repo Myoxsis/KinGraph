@@ -131,8 +131,9 @@ export function parseDateFragment(text: string): ParsedDateFragment {
   const results = chrono.parse(cleaned, new Date(), { forwardDate: false });
   if (results.length) {
     const result = results[0];
-    const known = result.knownValues;
-    const implied = result.impliedValues ?? {};
+    const components = result.start;
+    const known = components?.knownValues ?? {};
+    const implied = components?.impliedValues ?? {};
     const year = known.year ?? implied.year;
     const month = known.month;
     const day = known.day;
@@ -333,7 +334,10 @@ function handleLabelValue(
       addProvenance(record, html, "maidenName", maidenMatch[1]);
     }
 
-    const cleaned = trimmed.replace(/\bn[eé]e\s+[A-Za-z'’\-]+/i, "").trim();
+    const cleaned = trimmed
+      .replace(/\bn[eé]e\s+[A-Za-z'’\-]+/i, "")
+      .replace(/\(\s*\)/g, "")
+      .trim();
     const tokens = cleaned.split(/\s+/).filter(Boolean);
     if (tokens.length > 0) {
       record.surname = tokens[tokens.length - 1];
