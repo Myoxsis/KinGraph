@@ -1,4 +1,5 @@
 import { load } from "cheerio";
+import * as chrono from "chrono-node";
 import { IndividualRecordSchema, type IndividualRecord } from "./schema";
 
 type ProvenanceEntry = IndividualRecord["provenance"][number];
@@ -66,16 +67,95 @@ function normalizeSex(value: string): "M" | "F" | "U" | undefined {
   return undefined;
 }
 
-function parseYearInfo(text: string) {
-  const yearMatch = text.match(/(c(?:irca)?\.?\s*)?(\d{4})/i);
-  if (!yearMatch) {
-    return { year: undefined, approx: undefined } as const;
+const APPROX_KEYWORD_TEST = /\b(?:abt|about|approx(?:\.?|imately)?|around|circa|ca\.?)\b|~/i;
+const APPROX_KEYWORD_REPLACE = /\b(?:abt|about|approx(?:\.?|imately)?|around|circa|ca\.?)\b|~/gi;
+const C_PREFIX_APPROX = /\bc[.\s]*(?=\d)/i;
+
+const C_PREFIX_PATTERN = /\bc[.\s]*(?=\d)/gi;
+
+export interface ParsedDateFragment {
+  raw: string;
+  year?: number;
+  month?: number;
+  day?: number;
+  approx: boolean;
+}
+
+export function parseDateFragment(text: string): ParsedDateFragment {
+  const raw = text.trim();
+  if (!raw) {
+    return { raw, approx: false };
   }
 
-  const approx = Boolean(yearMatch[1]);
-  const year = Number(yearMatch[2]);
+  let approx = APPROX_KEYWORD_TEST.test(raw) || C_PREFIX_APPROX.test(raw) || /\b(before|after)\b/i.test(raw);
 
-  return { year, approx } as const;
+  const quarterMatch = raw.match(/\bQ([1-4])\s+(\d{4})\b/i);
+  if (quarterMatch) {
+    const quarter = Number(quarterMatch[1]);
+    const year = Number(quarterMatch[2]);
+    return {
+      raw,
+      approx: true,
+      year,
+      month: (quarter - 1) * 3 + 1,
+    };
+  }
+
+  const boundMatch = raw.match(/\b(before|after)\s+(\d{4})\b/i);
+  if (boundMatch) {
+    const year = Number(boundMatch[2]);
+    return {
+      raw,
+      approx: true,
+      year,
+    };
+  }
+
+  const cleaned = raw
+    .replace(APPROX_KEYWORD_REPLACE, "")
+    .replace(C_PREFIX_PATTERN, "")
+    .replace(/[~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const results = chrono.parse(cleaned, new Date(), { forwardDate: false });
+  if (results.length) {
+    const result = results[0];
+    const known = result.knownValues;
+    const implied = result.impliedValues ?? {};
+    const year = known.year ?? implied.year;
+    const month = known.month;
+    const day = known.day;
+
+    if (year !== undefined || month !== undefined || day !== undefined) {
+      const onlyYear = year !== undefined && month === undefined && day === undefined;
+      if (onlyYear && !approx) {
+        approx = false;
+      }
+
+      return {
+        raw,
+        approx,
+        year,
+        month,
+        day,
+      };
+    }
+  }
+
+  const yearMatch = raw.match(/(\d{4})/);
+  if (yearMatch) {
+    const year = Number(yearMatch[1]);
+    const approxFromText =
+      APPROX_KEYWORD_TEST.test(raw) || C_PREFIX_APPROX.test(raw) || /\b(before|after)\b/i.test(raw);
+    return {
+      raw,
+      year,
+      approx: approxFromText,
+    };
+  }
+
+  return { raw, approx: false };
 }
 
 function extractFullNameFromHeadings(html: string, record: IndividualRecord, $: ReturnType<typeof load>) {
@@ -192,22 +272,34 @@ function handleLabelValue(
     }
   } else if (/\b(born|birth)\b/.test(normalizedLabel)) {
     record.birth.raw = value.trim();
-    const { year, approx } = parseYearInfo(value);
-    if (year) {
-      record.birth.year = year;
+    const parsed = parseDateFragment(value);
+    if (parsed.year !== undefined) {
+      record.birth.year = parsed.year;
     }
-    if (approx !== undefined) {
-      record.birth.approx = approx;
+    if (parsed.month !== undefined) {
+      record.birth.month = parsed.month;
+    }
+    if (parsed.day !== undefined) {
+      record.birth.day = parsed.day;
+    }
+    if (parsed.year !== undefined || parsed.month !== undefined || parsed.day !== undefined) {
+      record.birth.approx = parsed.approx;
     }
     addProvenance(record, html, "birth.raw", provenanceText.trim());
   } else if (/\b(died|death)\b/.test(normalizedLabel)) {
     record.death.raw = value.trim();
-    const { year, approx } = parseYearInfo(value);
-    if (year) {
-      record.death.year = year;
+    const parsed = parseDateFragment(value);
+    if (parsed.year !== undefined) {
+      record.death.year = parsed.year;
     }
-    if (approx !== undefined) {
-      record.death.approx = approx;
+    if (parsed.month !== undefined) {
+      record.death.month = parsed.month;
+    }
+    if (parsed.day !== undefined) {
+      record.death.day = parsed.day;
+    }
+    if (parsed.year !== undefined || parsed.month !== undefined || parsed.day !== undefined) {
+      record.death.approx = parsed.approx;
     }
     addProvenance(record, html, "death.raw", provenanceText.trim());
   } else if (/\bresidence\b/.test(normalizedLabel)) {
@@ -216,8 +308,8 @@ function handleLabelValue(
       .map((part) => part.trim())
       .filter(Boolean);
     entries.forEach((entry) => {
-      const { year } = parseYearInfo(entry);
-      record.residences.push({ raw: entry, year });
+      const parsed = parseDateFragment(entry);
+      record.residences.push({ raw: entry, year: parsed.year });
       addProvenance(record, html, `residences[${record.residences.length - 1}].raw`, entry);
     });
   } else if (/\bfather\b/.test(normalizedLabel)) {
