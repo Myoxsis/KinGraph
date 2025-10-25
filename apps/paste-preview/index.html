@@ -140,12 +140,37 @@
             <div>
               <label for="html-input">Source HTML</label>
               <textarea id="html-input" placeholder="Paste HTML here..."></textarea>
+              <details class="preprocess-hints">
+                <summary>Suggested clean-up steps</summary>
+                <ul>
+                  <li>Remove navigation, advertisements, and unrelated footers.</li>
+                  <li>Strip duplicate whitespace and convert smart quotes to straight quotes.</li>
+                  <li>Ensure dates use consistent formats (e.g., 12 Jan 1893).</li>
+                  <li>Include the full paragraph or table row that contains the subject.</li>
+                </ul>
+              </details>
             </div>
-            <div class="action-row">
-              <button id="toggle-sources" type="button" disabled>Highlight sources</button>
-              <button id="reextract" type="button" class="button-secondary" disabled>Relaunch extract</button>
+            <div class="extraction-toolbar" role="group" aria-label="Extraction helpers">
+              <div class="toolbar-chips" id="sample-chip-row" aria-label="Sample snippets"></div>
+              <label class="toolbar-toggle" for="auto-extract">
+                <input type="checkbox" id="auto-extract" checked />
+                <span>Auto extract</span>
+              </label>
+              <div class="toolbar-status" aria-live="polite">
+                <span id="char-count">0 characters</span>
+                <span id="last-run">Last extracted — never</span>
+              </div>
+              <div class="toolbar-actions">
+                <button id="toggle-sources" type="button" disabled>Highlight sources</button>
+                <button id="reextract" type="button" class="button-secondary" disabled>Run extract</button>
+                <button id="clear-input" type="button" class="button-secondary" disabled>Clear input</button>
+              </div>
             </div>
             <iframe id="source-preview" title="Provenance preview" hidden></iframe>
+            <footer class="extraction-helper" id="extraction-helper" aria-live="polite">
+              <span class="helper-label">Last extracted</span>
+              <time id="last-run-footer">Never</time>
+            </footer>
           </section>
 
           <section class="panel stack">
