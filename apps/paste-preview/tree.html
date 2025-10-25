@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KinGraph Workbench — Tree</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-page="tree">
+    <main>
+      <header class="header">
+        <div class="header-meta">
+          <h1>KinGraph Workbench</h1>
+          <p class="status">
+            Explore a three-generation view for the individuals you have captured.
+          </p>
+        </div>
+        <nav class="tabs" role="tablist">
+          <a class="tab" href="./index.html">Records</a>
+          <a class="tab" href="./individuals.html">Individuals</a>
+          <a class="tab is-active" href="./tree.html">Tree</a>
+          <a class="tab" href="./settings.html">Settings</a>
+        </nav>
+      </header>
+
+      <section class="view secondary-grid">
+        <section class="panel stack">
+          <header>
+            <h2>Family tree</h2>
+          </header>
+          <p class="supporting-text">
+            Choose an individual to explore a three-generation view centered on them.
+          </p>
+          <div class="control">
+            <label for="tree-search">Search individuals</label>
+            <input type="search" id="tree-search" placeholder="Type to filter by name" />
+          </div>
+          <div class="control">
+            <label for="tree-individual-select">Select individual</label>
+            <select id="tree-individual-select"></select>
+          </div>
+          <div class="card-actions">
+            <button type="button" id="tree-clear" class="button-secondary">Clear selection</button>
+          </div>
+        </section>
+        <section class="panel">
+          <header>
+            <h2>Three-generation view</h2>
+          </header>
+          <div id="tree-container" class="tree-container"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

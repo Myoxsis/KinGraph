@@ -23,7 +23,12 @@ export default defineConfig({
     outDir: resolve(__dirname, "dist/paste-preview"),
     emptyOutDir: true,
     rollupOptions: {
-      input: resolve(appRoot, "index.html"),
+      input: {
+        records: resolve(appRoot, "index.html"),
+        individuals: resolve(appRoot, "individuals.html"),
+        tree: resolve(appRoot, "tree.html"),
+        settings: resolve(appRoot, "settings.html"),
+      },
     },
   },
   resolve: {
