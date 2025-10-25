@@ -22,6 +22,7 @@ export interface StoredPlaceDefinition {
 export interface StoredIndividual {
   id: string;
   name: string;
+  notes: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -270,6 +271,7 @@ function normalizeState(value: Partial<PersistedState>): PersistedState {
       .map((item) => ({
         id: item.id,
         name: item.name,
+        notes: typeof item.notes === "string" ? item.notes : "",
         createdAt: item.createdAt ?? new Date().toISOString(),
         updatedAt: item.updatedAt ?? item.createdAt ?? new Date().toISOString(),
       })),
@@ -410,6 +412,7 @@ export async function createIndividual(name: string): Promise<StoredIndividual> 
   const individual: StoredIndividual = {
     id: generateId(),
     name,
+    notes: "",
     createdAt: now,
     updatedAt: now,
   };
@@ -420,19 +423,36 @@ export async function createIndividual(name: string): Promise<StoredIndividual> 
   return individual;
 }
 
-export async function renameIndividual(id: string, name: string): Promise<StoredIndividual | null> {
+export async function updateIndividual(
+  options: { id: string; name?: string; notes?: string },
+): Promise<StoredIndividual | null> {
   await initialization;
   const next = cloneState(state);
-  const target = next.individuals.find((individual) => individual.id === id);
+  const target = next.individuals.find((individual) => individual.id === options.id);
 
   if (!target) {
     return null;
   }
 
-  target.name = name;
+  if (typeof options.name !== "undefined") {
+    const trimmedName = options.name.trim();
+    if (!trimmedName) {
+      throw new Error("Individual name cannot be empty.");
+    }
+    target.name = trimmedName;
+  }
+
+  if (typeof options.notes !== "undefined") {
+    target.notes = options.notes.trim();
+  }
+
   target.updatedAt = new Date().toISOString();
   await commit(next);
   return target;
+}
+
+export async function renameIndividual(id: string, name: string): Promise<StoredIndividual | null> {
+  return updateIndividual({ id, name });
 }
 
 export async function saveProfessionDefinition(options: {
