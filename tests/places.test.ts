@@ -7,6 +7,13 @@ describe("parsePlace", () => {
     expect(result).toEqual({
       place: "Paris, France",
       tokens: ["France"],
+      matches: [
+        {
+          fragment: "France",
+          canonical: "France",
+          category: "country",
+        },
+      ],
     });
   });
 
@@ -14,7 +21,19 @@ describe("parsePlace", () => {
     const result = parsePlace("Salt Lake City, Utah, USA");
     expect(result).toEqual({
       place: "Salt Lake City, Utah, USA",
-      tokens: ["Utah", "USA"],
+      tokens: ["Utah", "United States"],
+      matches: [
+        {
+          fragment: "Utah",
+          canonical: "Utah",
+          category: "state",
+        },
+        {
+          fragment: "USA",
+          canonical: "United States",
+          category: "country",
+        },
+      ],
     });
   });
 
@@ -22,7 +41,24 @@ describe("parsePlace", () => {
     const result = parsePlace("New York, NY, USA");
     expect(result).toEqual({
       place: "New York, NY, USA",
-      tokens: ["New York", "NY", "USA"],
+      tokens: ["New York", "United States"],
+      matches: [
+        {
+          fragment: "New York",
+          canonical: "New York",
+          category: "state",
+        },
+        {
+          fragment: "NY",
+          canonical: "New York",
+          category: "state",
+        },
+        {
+          fragment: "USA",
+          canonical: "United States",
+          category: "country",
+        },
+      ],
     });
   });
 
@@ -31,6 +67,13 @@ describe("parsePlace", () => {
     expect(result).toEqual({
       place: "Berlin; Germany; Europe",
       tokens: ["Germany"],
+      matches: [
+        {
+          fragment: "Germany",
+          canonical: "Germany",
+          category: "country",
+        },
+      ],
     });
   });
 
@@ -39,6 +82,7 @@ describe("parsePlace", () => {
     expect(result).toEqual({
       place: "",
       tokens: [],
+      matches: [],
     });
   });
 });

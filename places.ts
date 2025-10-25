@@ -1,6 +1,21 @@
+export type PlaceCategory = "country" | "state" | "region";
+
+export type PlaceDefinition = {
+  label: string;
+  aliases?: string[];
+  category?: PlaceCategory;
+};
+
+export type PlaceMatch = {
+  fragment: string;
+  canonical: string;
+  category?: PlaceCategory;
+};
+
 export type ParsedPlace = {
   place: string;
   tokens: string[];
+  matches: PlaceMatch[];
 };
 
 const normalizeToken = (value: string): string =>
@@ -12,7 +27,7 @@ const normalizeToken = (value: string): string =>
 
 const collapseSpaces = (value: string): string => value.replace(/\s+/g, "");
 
-const COUNTRY_ALIASES = new Map<string, string>([
+const COUNTRY_ALIAS_PAIRS: readonly [string, string][] = [
   ["united states", "United States"],
   ["unitedstates", "United States"],
   ["usa", "United States"],
@@ -69,9 +84,9 @@ const COUNTRY_ALIASES = new Map<string, string>([
   ["south africa", "South Africa"],
   ["southafrica", "South Africa"],
   ["egypt", "Egypt"],
-]);
+];
 
-const STATE_ALIASES = new Map<string, string>([
+const STATE_ALIAS_PAIRS: readonly [string, string][] = [
   ["alabama", "Alabama"],
   ["al", "Alabama"],
   ["alaska", "Alaska"],
@@ -185,18 +200,94 @@ const STATE_ALIASES = new Map<string, string>([
   ["district of columbia", "District of Columbia"],
   ["districtofcolumbia", "District of Columbia"],
   ["dc", "District of Columbia"],
-]);
+];
 
-const getCanonicalPlace = (value: string, map: Map<string, string>): string | undefined => {
+const buildDefinitions = (
+  pairs: readonly [string, string][],
+  category: PlaceCategory,
+): PlaceDefinition[] => {
+  const grouped = new Map<string, Set<string>>();
+
+  for (const [alias, canonical] of pairs) {
+    const trimmedCanonical = canonical.trim();
+    if (!trimmedCanonical) {
+      continue;
+    }
+
+    const normalizedCanonical = normalizeToken(trimmedCanonical);
+    const key = trimmedCanonical;
+    const aliases = grouped.get(key) ?? new Set<string>();
+
+    const normalizedAlias = normalizeToken(alias);
+    if (normalizedAlias && normalizedAlias !== normalizedCanonical) {
+      aliases.add(alias);
+    }
+
+    grouped.set(key, aliases);
+  }
+
+  return [...grouped.entries()].map(([label, aliases]) => ({
+    label,
+    aliases: [...aliases],
+    category,
+  }));
+};
+
+const TEMPLATE_COUNTRIES = buildDefinitions(COUNTRY_ALIAS_PAIRS, "country");
+const TEMPLATE_STATES = buildDefinitions(STATE_ALIAS_PAIRS, "state");
+
+export const TEMPLATE_PLACES: readonly PlaceDefinition[] = [
+  ...TEMPLATE_COUNTRIES,
+  ...TEMPLATE_STATES,
+];
+
+type AliasEntry = { label: string; category?: PlaceCategory };
+
+const createAliasMap = (
+  definitions: readonly PlaceDefinition[],
+): Map<string, AliasEntry> => {
+  const map = new Map<string, AliasEntry>();
+
+  for (const definition of definitions) {
+    const normalizedLabel = normalizeToken(definition.label);
+    const entry: AliasEntry = { label: definition.label, category: definition.category };
+    map.set(normalizedLabel, entry);
+    map.set(collapseSpaces(normalizedLabel), entry);
+
+    if (!definition.aliases) {
+      continue;
+    }
+
+    for (const alias of definition.aliases) {
+      const normalizedAlias = normalizeToken(alias);
+      if (!normalizedAlias) {
+        continue;
+      }
+
+      map.set(normalizedAlias, entry);
+      map.set(collapseSpaces(normalizedAlias), entry);
+    }
+  }
+
+  return map;
+};
+
+const getCanonicalPlace = (
+  value: string,
+  map: Map<string, AliasEntry>,
+): AliasEntry | undefined => {
   const normalized = normalizeToken(value);
   const collapsed = collapseSpaces(normalized);
   return map.get(normalized) ?? map.get(collapsed);
 };
 
-export const parsePlace = (text: string): ParsedPlace => {
+export const parsePlace = (
+  text: string,
+  definitions: readonly PlaceDefinition[] = TEMPLATE_PLACES,
+): ParsedPlace => {
   const place = text.trim();
   if (!place) {
-    return { place, tokens: [] };
+    return { place: "", tokens: [], matches: [] };
   }
 
   const fragments = place
@@ -204,23 +295,30 @@ export const parsePlace = (text: string): ParsedPlace => {
     .map((fragment) => fragment.trim())
     .filter(Boolean);
 
+  const aliasMap = createAliasMap(definitions);
   const tokens: string[] = [];
+  const matches: PlaceMatch[] = [];
 
   for (const fragment of fragments) {
-    const country = getCanonicalPlace(fragment, COUNTRY_ALIASES);
-    if (country) {
-      tokens.push(fragment);
+    const canonical = getCanonicalPlace(fragment, aliasMap);
+    if (!canonical) {
       continue;
     }
 
-    const state = getCanonicalPlace(fragment, STATE_ALIASES);
-    if (state) {
-      tokens.push(fragment);
+    if (!tokens.includes(canonical.label)) {
+      tokens.push(canonical.label);
     }
+
+    matches.push({
+      fragment,
+      canonical: canonical.label,
+      category: canonical.category,
+    });
   }
 
   return {
     place,
     tokens,
+    matches,
   };
 };
