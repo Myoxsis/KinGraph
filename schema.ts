@@ -60,6 +60,10 @@ export const IndividualRecordSchema = z.object({
      * Indicates whether the birth date is approximate.
      */
     approx: z.boolean().optional(),
+    /**
+     * Reported birth place.
+     */
+    place: z.string().optional(),
   }),
   /**
    * Recorded death details for the individual.
@@ -85,6 +89,10 @@ export const IndividualRecordSchema = z.object({
      * Indicates whether the death date is approximate.
      */
     approx: z.boolean().optional(),
+    /**
+     * Reported death place.
+     */
+    place: z.string().optional(),
   }),
   /**
    * Known residences for the individual over time.
@@ -127,6 +135,10 @@ export const IndividualRecordSchema = z.object({
    */
   children: z.array(z.string()),
   /**
+   * Names of siblings associated with the individual.
+   */
+  siblings: z.array(z.string()),
+  /**
    * Reported occupation of the individual.
    */
   occupation: z.string().optional(),
@@ -161,6 +173,10 @@ export const IndividualRecordSchema = z.object({
       end: z.number(),
     })
   ),
+  /**
+   * Free-form source references captured from the page.
+   */
+  sources: z.array(z.string()),
 });
 
 export type IndividualRecord = z.infer<typeof IndividualRecordSchema>;

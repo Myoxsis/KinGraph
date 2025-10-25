@@ -30,7 +30,9 @@ function createRecordSkeleton(html: string): IndividualRecord {
     parents: {},
     spouses: [],
     children: [],
+    siblings: [],
     provenance: [],
+    sources: [],
   };
 }
 
@@ -416,12 +418,81 @@ export function parseName(full: string): ParsedName {
   };
 }
 
+interface DatePlaceParts {
+  date: string;
+  place?: string;
+}
+
+function stripTrailingAge(text: string): string {
+  return text.replace(/[,;]?\s*aged[^,;]*$/i, "").trim();
+}
+
+function splitDateAndPlace(value: string, options?: { skipAgeCleanup?: boolean }): DatePlaceParts | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  let working = value.replace(/\s+/g, " ").trim();
+  if (!working) {
+    return undefined;
+  }
+
+  if (!options?.skipAgeCleanup) {
+    working = stripTrailingAge(working);
+  }
+
+  if (!working) {
+    return undefined;
+  }
+
+  const chronoResults = chrono.parse(working, new Date(), { forwardDate: false });
+  if (chronoResults.length) {
+    const result = chronoResults[0];
+    if (result.index === 0) {
+      const dateText = result.text.trim();
+      const remainder = working.slice(result.index + result.text.length).trim();
+      const placeText = remainder.replace(/^[\-–—,:\s]+/, "").trim();
+      return {
+        date: dateText,
+        place: placeText || undefined,
+      };
+    }
+  }
+
+  const hyphenMatch = working.match(/^(.*?)\s*[\-–—]\s*(.*)$/);
+  if (hyphenMatch) {
+    const dateText = hyphenMatch[1].trim();
+    const placeText = hyphenMatch[2].trim();
+    if (dateText) {
+      return {
+        date: dateText,
+        place: placeText || undefined,
+      };
+    }
+  }
+
+  const commaMatch = working.match(/^(.*?\d{3,4})(?:[,;]\s*|\s{2,})(.+)$/);
+  if (commaMatch) {
+    const dateText = commaMatch[1].trim();
+    const placeText = commaMatch[2].trim();
+    if (dateText) {
+      return {
+        date: dateText,
+        place: placeText || undefined,
+      };
+    }
+  }
+
+  return working ? { date: working } : undefined;
+}
+
 type LifeEventType = "birth" | "death";
 
 interface GenewebLifeEvent {
   type: LifeEventType;
   raw: string;
   date: string;
+  place?: string;
 }
 
 function parseGenewebLifeEvent(text: string): GenewebLifeEvent | undefined {
@@ -453,19 +524,18 @@ function parseGenewebLifeEvent(text: string): GenewebLifeEvent | undefined {
     return undefined;
   }
 
-  cleaned = cleaned.replace(/,\s*aged[^,]*$/i, "").trim();
+  cleaned = stripTrailingAge(cleaned);
 
-  const [datePart] = cleaned.split(/\s+-\s+/);
-  const date = (datePart ?? "").trim();
-
-  if (!date) {
+  const dateParts = splitDateAndPlace(cleaned, { skipAgeCleanup: true });
+  if (!dateParts || !dateParts.date) {
     return undefined;
   }
 
   return {
     type,
     raw: cleaned,
-    date,
+    date: dateParts.date,
+    place: dateParts.place,
   };
 }
 
@@ -566,6 +636,13 @@ function extractGenewebProfile(html: string, record: IndividualRecord, $: Cheeri
           if (range) {
             addProvenance(record, html, `${fieldPrefix}.raw`, range);
           }
+        }
+        if (event.place && !target.place) {
+          target.place = event.place;
+          const placeSource: ProvenanceSource = range
+            ? findRangeByText(html, event.place, range) ?? { text: event.place, context: range }
+            : { text: event.place };
+          addProvenance(record, html, `${fieldPrefix}.place`, placeSource);
         }
         if (parsed.year !== undefined && target.year === undefined) {
           target.year = parsed.year;
@@ -696,6 +773,83 @@ function extractGenewebProfile(html: string, record: IndividualRecord, $: Cheeri
           addProvenance(record, html, "children", childRange);
         }
       });
+    });
+  }
+
+  const addSourceEntry = (value: string, node?: AnyNode) => {
+    const normalized = value?.trim();
+    if (!normalized) {
+      return;
+    }
+    if (!record.sources.includes(normalized)) {
+      record.sources.push(normalized);
+      if (node) {
+        const range = getTextRangeFromNode(node) ?? getInnerRange(node) ?? getLocationRange(node);
+        if (range) {
+          addProvenance(record, html, "sources", range);
+        }
+      }
+    }
+  };
+
+  const siblingsHeading = personSection
+    .find("h2")
+    .filter((_, heading) => headingMatches(heading as unknown as AnyNode, "Sibling"))
+    .first();
+
+  if (siblingsHeading.length) {
+    const siblingsList = siblingsHeading.nextAll("ul").first();
+    const selfName = [...record.givenNames, record.surname].filter(Boolean).join(" ").trim();
+    const normalizedSelf = selfName ? normalizeForComparison(selfName) : undefined;
+    siblingsList.children("li").each((_, siblingItem) => {
+      const item = $(siblingItem);
+      const anchor = item.find("a").first();
+      const siblingText = (anchor.length ? anchor.text() : item.text()).replace(/\s+/g, " ").trim();
+      if (!siblingText) {
+        return;
+      }
+      if (normalizedSelf && normalizeForComparison(siblingText) === normalizedSelf) {
+        return;
+      }
+      if (!record.siblings.includes(siblingText)) {
+        record.siblings.push(siblingText);
+        const node = anchor.length ? (anchor.get(0) as AnyNode) : (siblingItem as unknown as AnyNode);
+        const range = node
+          ? getTextRangeFromNode(node) ?? getInnerRange(node) ?? getLocationRange(node)
+          : undefined;
+        if (range) {
+          addProvenance(record, html, "siblings", range);
+        }
+      }
+    });
+  }
+
+  personSection
+    .find("a")
+    .each((_, anchorEl) => {
+      const anchor = $(anchorEl);
+      const text = anchor
+        .text()
+        .replace(/\s+/g, " ")
+        .trim();
+      const href = anchor.attr("href");
+      if (!text) {
+        return;
+      }
+      if (/source|original record/i.test(text)) {
+        const descriptor = href ? `${text} (${href})` : text;
+        addSourceEntry(descriptor, anchorEl as unknown as AnyNode);
+      }
+    });
+
+  const sysDatas = personSection.find("#sysdatas");
+  if (sysDatas.length) {
+    const node = sysDatas.get(0) as AnyNode | undefined;
+    ["data-urlindividus", "data-urlvsources"].forEach((attr) => {
+      const url = sysDatas.attr(attr);
+      if (url) {
+        addSourceEntry(url, node);
+      }
     });
   }
 }
@@ -861,7 +1015,8 @@ function handleLabelValue(
     }
   } else if (labelMatches(label, "birth")) {
     record.birth.raw = trimmedValue;
-    const parsed = parseDateFragment(value);
+    const dateParts = splitDateAndPlace(trimmedValue);
+    const parsed = parseDateFragment(dateParts?.date ?? value);
     if (parsed.year !== undefined) {
       record.birth.year = parsed.year;
       addProvenance(record, html, "birth.year", contextualText(String(parsed.year)));
@@ -878,10 +1033,21 @@ function handleLabelValue(
       record.birth.approx = parsed.approx;
       addProvenance(record, html, "birth.approx", valueSource);
     }
+    if (dateParts?.place && !record.birth.place) {
+      const placeSource = provenance.valueRange
+        ? findRangeByText(html, dateParts.place, provenance.valueRange) ?? {
+            text: dateParts.place,
+            context: provenance.valueRange,
+          }
+        : contextualText(dateParts.place);
+      record.birth.place = dateParts.place;
+      addProvenance(record, html, "birth.place", placeSource);
+    }
     addProvenance(record, html, "birth.raw", valueSource);
   } else if (labelMatches(label, "death")) {
     record.death.raw = trimmedValue;
-    const parsed = parseDateFragment(value);
+    const dateParts = splitDateAndPlace(trimmedValue);
+    const parsed = parseDateFragment(dateParts?.date ?? value);
     if (parsed.year !== undefined) {
       record.death.year = parsed.year;
       addProvenance(record, html, "death.year", contextualText(String(parsed.year)));
@@ -898,6 +1064,16 @@ function handleLabelValue(
       record.death.approx = parsed.approx;
       addProvenance(record, html, "death.approx", valueSource);
     }
+    if (dateParts?.place && !record.death.place) {
+      const placeSource = provenance.valueRange
+        ? findRangeByText(html, dateParts.place, provenance.valueRange) ?? {
+            text: dateParts.place,
+            context: provenance.valueRange,
+          }
+        : contextualText(dateParts.place);
+      record.death.place = dateParts.place;
+      addProvenance(record, html, "death.place", placeSource);
+    }
     addProvenance(record, html, "death.raw", valueSource);
   } else if (labelMatches(label, "residence")) {
     const entries = value
@@ -910,8 +1086,10 @@ function handleLabelValue(
         : trimmedValue;
     let searchOffset = 0;
     entries.forEach((entry) => {
-      const parsed = parseDateFragment(entry);
-      record.residences.push({ raw: entry, year: parsed.year });
+      const dateParts = splitDateAndPlace(entry);
+      const parsed = parseDateFragment(dateParts?.date ?? entry);
+      const residence = { raw: entry, year: parsed.year, place: dateParts?.place };
+      record.residences.push(residence);
       let entryRange: Range | undefined;
       if (provenance.valueRange) {
         const relativeIndex = valueSlice.indexOf(entry, searchOffset);
@@ -923,12 +1101,17 @@ function handleLabelValue(
           searchOffset = relativeIndex + entry.length;
         }
       }
-      addProvenance(
-        record,
-        html,
-        `residences[${record.residences.length - 1}].raw`,
-        entryRange ?? contextualText(entry),
-      );
+      const residenceIndex = record.residences.length - 1;
+      addProvenance(record, html, `residences[${residenceIndex}].raw`, entryRange ?? contextualText(entry));
+      if (residence.place) {
+        const placeSource = entryRange
+          ? findRangeByText(html, residence.place, entryRange) ?? {
+              text: residence.place,
+              context: entryRange,
+            }
+          : contextualText(residence.place);
+        addProvenance(record, html, `residences[${residenceIndex}].place`, placeSource);
+      }
     });
   } else if (labelMatches(label, "father")) {
     record.parents.father = trimmedValue;
@@ -985,6 +1168,33 @@ function handleLabelValue(
         }
       }
       addProvenance(record, html, "children", entryRange ?? contextualText(entry));
+    });
+  } else if (labelMatches(label, "source")) {
+    const entries = value
+      .split(/[\n;,]+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const valueSlice =
+      provenance.valueRange && provenance.valueRange.end > provenance.valueRange.start
+        ? html.slice(provenance.valueRange.start, provenance.valueRange.end)
+        : trimmedValue;
+    let searchOffset = 0;
+    entries.forEach((entry) => {
+      let entryRange: Range | undefined;
+      if (provenance.valueRange) {
+        const relativeIndex = valueSlice.indexOf(entry, searchOffset);
+        if (relativeIndex !== -1) {
+          entryRange = {
+            start: provenance.valueRange.start + relativeIndex,
+            end: provenance.valueRange.start + relativeIndex + entry.length,
+          };
+          searchOffset = relativeIndex + entry.length;
+        }
+      }
+      if (!record.sources.includes(entry)) {
+        record.sources.push(entry);
+      }
+      addProvenance(record, html, "sources", entryRange ?? contextualText(entry));
     });
   } else if (labelMatches(label, "occupation")) {
     record.occupation = trimmedValue;
