@@ -3,6 +3,12 @@ import type { AnyNode } from "domhandler";
 import * as chrono from "chrono-node";
 import { IndividualRecordSchema, type IndividualRecord } from "./schema";
 import LABELS, { type LabelKey } from "./labels";
+import {
+  parseProfession,
+  TEMPLATE_PROFESSIONS,
+  type ProfessionDefinition,
+} from "./professions";
+import { parsePlace, TEMPLATE_PLACES, type PlaceDefinition } from "./places";
 
 type ProvenanceEntry = IndividualRecord["provenance"][number];
 
@@ -17,6 +23,11 @@ type ProvenanceSource =
       text: string;
       context?: Range;
     };
+
+export interface ExtractOptions {
+  professions?: readonly ProfessionDefinition[];
+  places?: readonly PlaceDefinition[];
+}
 
 function createRecordSkeleton(html: string): IndividualRecord {
   return {
@@ -567,8 +578,8 @@ function extractGenewebProfile(html: string, record: IndividualRecord, $: Cheeri
         addProvenance(record, html, field, { text, context: nameRange });
       } else {
         addProvenance(record, html, field, { text });
-      }
-    };
+  }
+};
 
     if (nameText) {
       const parsed = parseName(nameText);
@@ -850,6 +861,73 @@ function extractGenewebProfile(html: string, record: IndividualRecord, $: Cheeri
       if (url) {
         addSourceEntry(url, node);
       }
+    });
+  }
+}
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function normalizePlace(
+  place: string | undefined,
+  definitions: readonly PlaceDefinition[],
+): string | undefined {
+  if (!place) {
+    return place;
+  }
+
+  const parsed = parsePlace(place, definitions);
+
+  if (!parsed.matches.length) {
+    return place;
+  }
+
+  let normalized = place;
+
+  for (const match of parsed.matches) {
+    if (match.fragment === match.canonical) {
+      continue;
+    }
+
+    const pattern = new RegExp(escapeRegExp(match.fragment), "gi");
+    normalized = normalized.replace(pattern, match.canonical);
+  }
+
+  return normalized;
+}
+
+function applyMasterData(record: IndividualRecord, options: ExtractOptions): void {
+  const professionDefinitions = options.professions ?? TEMPLATE_PROFESSIONS;
+
+  if (record.occupation) {
+    const parsedProfession = parseProfession(record.occupation, professionDefinitions);
+    if (parsedProfession.tokens.length) {
+      record.occupation = parsedProfession.tokens[0];
+    }
+  }
+
+  const placeDefinitions = options.places ?? TEMPLATE_PLACES;
+
+  const birthPlace = normalizePlace(record.birth.place, placeDefinitions);
+  if (birthPlace !== undefined) {
+    record.birth.place = birthPlace;
+  }
+
+  const deathPlace = normalizePlace(record.death.place, placeDefinitions);
+  if (deathPlace !== undefined) {
+    record.death.place = deathPlace;
+  }
+
+  if (record.residences.length) {
+    record.residences = record.residences.map((residence) => {
+      const normalizedPlace = normalizePlace(residence.place, placeDefinitions);
+      if (normalizedPlace === undefined || normalizedPlace === residence.place) {
+        return residence;
+      }
+
+      return {
+        ...residence,
+        place: normalizedPlace,
+      };
     });
   }
 }
@@ -1330,7 +1408,7 @@ function extractLabelValuePairs(html: string, record: IndividualRecord, $: Retur
   });
 }
 
-export function extractIndividual(html: string): IndividualRecord {
+export function extractIndividual(html: string, options: ExtractOptions = {}): IndividualRecord {
   const $ = load(html, { sourceCodeLocationInfo: true });
   const record = createRecordSkeleton(html);
 
@@ -1350,6 +1428,8 @@ export function extractIndividual(html: string): IndividualRecord {
       addProvenance(record, html, "surname", { start, end: start + nameFromSurname.length });
     }
   }
+
+  applyMasterData(record, options);
 
   const validated = IndividualRecordSchema.parse(record);
   return validated;

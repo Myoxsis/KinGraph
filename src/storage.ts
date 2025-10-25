@@ -1,4 +1,23 @@
 import type { IndividualRecord } from "../schema";
+import { TEMPLATE_PROFESSIONS } from "../professions";
+import { TEMPLATE_PLACES, type PlaceCategory } from "../places";
+
+export interface StoredProfessionDefinition {
+  id: string;
+  label: string;
+  aliases: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoredPlaceDefinition {
+  id: string;
+  label: string;
+  aliases: string[];
+  category?: PlaceCategory;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface StoredIndividual {
   id: string;
@@ -18,16 +37,15 @@ export interface StoredRecord {
 interface PersistedState {
   individuals: StoredIndividual[];
   records: StoredRecord[];
+  professions: StoredProfessionDefinition[];
+  places: StoredPlaceDefinition[];
 }
 
 type StateListener = (state: PersistedState) => void;
 
 const STORAGE_KEY = "kingraph.app.data.v1";
 
-const defaultState: PersistedState = {
-  individuals: [],
-  records: [],
-};
+const defaultState: PersistedState = createDefaultState();
 
 let state: PersistedState = loadState();
 const listeners = new Set<StateListener>();
@@ -60,8 +78,12 @@ function loadState(): PersistedState {
 function normalizeState(value: Partial<PersistedState>): PersistedState {
   const individuals = Array.isArray(value.individuals) ? value.individuals : [];
   const records = Array.isArray(value.records) ? value.records : [];
+  const hasProfessionData = Array.isArray(value.professions);
+  const professions = hasProfessionData ? (value.professions as StoredProfessionDefinition[]) : [];
+  const hasPlaceData = Array.isArray(value.places);
+  const places = hasPlaceData ? (value.places as StoredPlaceDefinition[]) : [];
 
-  return {
+  const normalized: PersistedState = {
     individuals: individuals
       .filter((item): item is StoredIndividual =>
         Boolean(item && typeof item.id === "string" && typeof item.name === "string")
@@ -83,7 +105,40 @@ function normalizeState(value: Partial<PersistedState>): PersistedState {
         summary: item.summary ?? "",
         record: item.record,
       })),
+    professions: professions
+      .filter((item): item is StoredProfessionDefinition =>
+        Boolean(item && typeof item.id === "string" && typeof item.label === "string")
+      )
+      .map((item) => ({
+        id: item.id,
+        label: item.label,
+        aliases: normalizeAliases(Array.isArray(item.aliases) ? item.aliases : undefined),
+        createdAt: item.createdAt ?? new Date().toISOString(),
+        updatedAt: item.updatedAt ?? item.createdAt ?? new Date().toISOString(),
+      })),
+    places: places
+      .filter((item): item is StoredPlaceDefinition =>
+        Boolean(item && typeof item.id === "string" && typeof item.label === "string")
+      )
+      .map((item) => ({
+        id: item.id,
+        label: item.label,
+        aliases: normalizeAliases(Array.isArray(item.aliases) ? item.aliases : undefined),
+        category: item.category,
+        createdAt: item.createdAt ?? new Date().toISOString(),
+        updatedAt: item.updatedAt ?? item.createdAt ?? new Date().toISOString(),
+      })),
   };
+
+  if (!normalized.professions.length && !hasProfessionData) {
+    normalized.professions = seedProfessions();
+  }
+
+  if (!normalized.places.length && !hasPlaceData) {
+    normalized.places = seedPlaces();
+  }
+
+  return normalized;
 }
 
 function cloneState(value: PersistedState): PersistedState {
@@ -92,6 +147,14 @@ function cloneState(value: PersistedState): PersistedState {
     records: value.records.map((record) => ({
       ...record,
       record: cloneRecord(record.record),
+    })),
+    professions: value.professions.map((profession) => ({
+      ...profession,
+      aliases: [...profession.aliases],
+    })),
+    places: value.places.map((place) => ({
+      ...place,
+      aliases: [...place.aliases],
     })),
   };
 }
@@ -124,6 +187,48 @@ function generateId(): string {
   }
 
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function seedProfessions(): StoredProfessionDefinition[] {
+  return TEMPLATE_PROFESSIONS.map((definition) => {
+    const timestamp = new Date().toISOString();
+    return {
+      id: generateId(),
+      label: definition.label,
+      aliases: normalizeAliases(definition.aliases),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    } satisfies StoredProfessionDefinition;
+  });
+}
+
+function seedPlaces(): StoredPlaceDefinition[] {
+  return TEMPLATE_PLACES.map((definition) => {
+    const timestamp = new Date().toISOString();
+    return {
+      id: generateId(),
+      label: definition.label,
+      aliases: normalizeAliases(definition.aliases),
+      category: definition.category,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    } satisfies StoredPlaceDefinition;
+  });
+}
+
+function createDefaultState(): PersistedState {
+  return {
+    individuals: [],
+    records: [],
+    professions: seedProfessions(),
+    places: seedPlaces(),
+  };
+}
+
+function normalizeAliases(aliases: readonly string[] | undefined): string[] {
+  return Array.from(
+    new Set((aliases ?? []).map((alias) => alias.trim()).filter((alias) => alias.length > 0)),
+  );
 }
 
 function emit(): void {
@@ -175,6 +280,117 @@ export function renameIndividual(id: string, name: string): StoredIndividual | n
   persist(next);
   emit();
   return target;
+}
+
+export function saveProfessionDefinition(options: {
+  id?: string;
+  label: string;
+  aliases?: string[];
+}): StoredProfessionDefinition {
+  const label = options.label.trim();
+  if (!label) {
+    throw new Error("Profession label cannot be empty.");
+  }
+
+  const normalizedAliases = normalizeAliases(options.aliases);
+  const next = cloneState(state);
+  const timestamp = new Date().toISOString();
+  let stored: StoredProfessionDefinition | undefined;
+
+  if (options.id) {
+    stored = next.professions.find((item) => item.id === options.id);
+
+    if (stored) {
+      stored.label = label;
+      stored.aliases = normalizedAliases;
+      stored.updatedAt = timestamp;
+    }
+  }
+
+  if (!stored) {
+    stored = {
+      id: options.id ?? generateId(),
+      label,
+      aliases: normalizedAliases,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    next.professions.push(stored);
+  }
+
+  persist(next);
+  emit();
+  return stored;
+}
+
+export function deleteProfessionDefinition(id: string): void {
+  const next = cloneState(state);
+  const index = next.professions.findIndex((item) => item.id === id);
+
+  if (index === -1) {
+    return;
+  }
+
+  next.professions.splice(index, 1);
+  persist(next);
+  emit();
+}
+
+export function savePlaceDefinition(options: {
+  id?: string;
+  label: string;
+  aliases?: string[];
+  category?: PlaceCategory;
+}): StoredPlaceDefinition {
+  const label = options.label.trim();
+  if (!label) {
+    throw new Error("Place label cannot be empty.");
+  }
+
+  const normalizedAliases = normalizeAliases(options.aliases);
+  const next = cloneState(state);
+  const timestamp = new Date().toISOString();
+  let stored: StoredPlaceDefinition | undefined;
+
+  if (options.id) {
+    stored = next.places.find((item) => item.id === options.id);
+
+    if (stored) {
+      stored.label = label;
+      stored.aliases = normalizedAliases;
+      stored.category = options.category;
+      stored.updatedAt = timestamp;
+    }
+  }
+
+  if (!stored) {
+    stored = {
+      id: options.id ?? generateId(),
+      label,
+      aliases: normalizedAliases,
+      category: options.category,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    next.places.push(stored);
+  }
+
+  persist(next);
+  emit();
+  return stored;
+}
+
+export function deletePlaceDefinition(id: string): void {
+  const next = cloneState(state);
+  const index = next.places.findIndex((item) => item.id === id);
+
+  if (index === -1) {
+    return;
+  }
+
+  next.places.splice(index, 1);
+  persist(next);
+  emit();
 }
 
 export function createRecord(options: {
