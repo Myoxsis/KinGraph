@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KinGraph Workbench — Individuals</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-page="individuals">
+    <main>
+      <header class="header">
+        <div class="header-meta">
+          <h1>KinGraph Workbench</h1>
+          <p class="status">
+            Review and manage the individuals linked to your extracted records.
+          </p>
+        </div>
+        <nav class="tabs" role="tablist">
+          <a class="tab" href="./index.html">Records</a>
+          <a class="tab is-active" href="./individuals.html">Individuals</a>
+          <a class="tab" href="./tree.html">Tree</a>
+          <a class="tab" href="./settings.html">Settings</a>
+        </nav>
+      </header>
+
+      <section class="view secondary-grid">
+        <section class="panel">
+          <header>
+            <h2>Individuals</h2>
+          </header>
+          <div id="individuals-list" class="individuals-list"></div>
+        </section>
+        <section class="panel">
+          <header>
+            <h2>Create individual</h2>
+          </header>
+          <form id="create-individual-form" class="choice">
+            <div class="control">
+              <label for="create-individual-name">Display name</label>
+              <input type="text" id="create-individual-name" required />
+            </div>
+            <div class="card-actions">
+              <button type="submit">Create</button>
+              <span id="individuals-feedback" class="supporting-text" aria-live="polite"></span>
+            </div>
+          </form>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
