@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>KinGraph Paste Preview</title>
+    <title>KinGraph Workbench</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -15,22 +15,87 @@
       body {
         margin: 0;
         min-height: 100vh;
-        background: linear-gradient(145deg, #020617, #0f172a);
+        background: radial-gradient(circle at top left, #0f172a, #020617 55%);
         display: flex;
         justify-content: center;
-        padding: 32px 16px;
+        padding: 32px 16px 48px;
       }
 
       main {
-        width: min(1100px, 100%);
+        width: min(1180px, 100%);
         display: grid;
         gap: 24px;
       }
 
       h1 {
         margin: 0;
-        font-size: 1.5rem;
+        font-size: 1.75rem;
         font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #cbd5f5;
+      }
+
+      .header {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .header-meta {
+        display: grid;
+        gap: 8px;
+      }
+
+      .status {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #94a3b8;
+      }
+
+      .tabs {
+        display: inline-flex;
+        align-self: flex-start;
+        background: rgba(15, 23, 42, 0.7);
+        padding: 4px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+      }
+
+      .tab {
+        border: none;
+        background: transparent;
+        color: #cbd5f5;
+        font-size: 0.85rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 8px 18px;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease;
+      }
+
+      .tab:hover {
+        background: rgba(56, 189, 248, 0.12);
+        color: #e0f2fe;
+      }
+
+      .tab[aria-selected="true"] {
+        background: #38bdf8;
+        color: #0f172a;
+      }
+
+      .view {
+        display: grid;
+        gap: 24px;
       }
 
       .layout {
@@ -42,6 +107,24 @@
         .layout {
           grid-template-columns: 1fr 1fr;
         }
+      }
+
+      .panel {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: rgba(15, 23, 42, 0.75);
+        box-shadow: 0 16px 32px rgba(15, 23, 42, 0.35);
+        padding: 20px;
+      }
+
+      .panel > header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
       }
 
       label {
@@ -71,7 +154,10 @@
         min-height: 360px;
       }
 
-      textarea:focus {
+      textarea:focus,
+      input:focus,
+      select:focus,
+      button:focus-visible {
         outline: 2px solid rgba(14, 165, 233, 0.65);
         border-color: rgba(56, 189, 248, 0.45);
       }
@@ -83,30 +169,34 @@
         word-break: break-word;
       }
 
-      .panel {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
+      textarea {
+        min-height: 360px;
       }
 
-      .status {
-        font-size: 0.85rem;
-        color: #94a3b8;
+      .stack {
+        gap: 20px;
       }
 
       iframe {
         width: 100%;
-        height: 300px;
+        height: 320px;
         border: 1px solid rgba(148, 163, 184, 0.25);
         border-radius: 12px;
         background: #ffffff;
+      }
+
+      button,
+      select,
+      input[type="text"] {
+        font-family: inherit;
+        font-size: 0.9rem;
       }
 
       button {
         align-self: flex-start;
         border: none;
         border-radius: 999px;
-        padding: 8px 16px;
+        padding: 10px 18px;
         font-size: 0.85rem;
         font-weight: 600;
         letter-spacing: 0.04em;
@@ -117,20 +207,30 @@
         transition: background 0.2s ease, transform 0.2s ease;
       }
 
-      button:hover {
+      button:hover:not(:disabled) {
         background: #0ea5e9;
         transform: translateY(-1px);
       }
 
       button:disabled {
-        background: rgba(148, 163, 184, 0.4);
-        color: rgba(15, 23, 42, 0.7);
+        background: rgba(148, 163, 184, 0.35);
+        color: rgba(15, 23, 42, 0.6);
         cursor: not-allowed;
+      }
+
+      .button-secondary {
+        background: rgba(148, 163, 184, 0.25);
+        color: #cbd5f5;
+      }
+
+      .button-secondary:hover:not(:disabled) {
+        background: rgba(148, 163, 184, 0.4);
+        color: #f1f5f9;
       }
 
       .error {
         border: 1px solid rgba(248, 113, 113, 0.6);
-        background: rgba(248, 113, 113, 0.1);
+        background: rgba(248, 113, 113, 0.12);
         color: rgba(254, 226, 226, 0.95);
         border-radius: 12px;
         padding: 16px;
@@ -167,36 +267,271 @@
         height: 100%;
         background: linear-gradient(90deg, #4ade80, #22c55e);
       }
+
+      .secondary-grid {
+        display: grid;
+        gap: 24px;
+      }
+
+      @media (min-width: 960px) {
+        .secondary-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      fieldset {
+        margin: 0;
+        padding: 0;
+        border: none;
+        display: grid;
+        gap: 16px;
+      }
+
+      .choice {
+        display: grid;
+        gap: 8px;
+      }
+
+      .choice label {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        font-size: 0.85rem;
+        text-transform: none;
+        letter-spacing: normal;
+        color: #e2e8f0;
+        margin: 0;
+      }
+
+      .choice input[type="radio"] {
+        accent-color: #38bdf8;
+      }
+
+      .control {
+        display: grid;
+        gap: 6px;
+      }
+
+      input[type="text"],
+      select {
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(15, 23, 42, 0.6);
+        color: #e2e8f0;
+        padding: 10px 12px;
+        transition: border-color 0.2s ease;
+      }
+
+      select:disabled,
+      input:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .supporting-text {
+        font-size: 0.8rem;
+        color: #94a3b8;
+      }
+
+      .saved-records-list,
+      .individuals-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .card {
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: rgba(15, 23, 42, 0.55);
+        padding: 16px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .card header {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: baseline;
+      }
+
+      .card-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #e0f2fe;
+      }
+
+      .meta {
+        font-size: 0.75rem;
+        color: #94a3b8;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 0.75rem;
+        background: rgba(56, 189, 248, 0.18);
+        color: #bae6fd;
+      }
+
+      .empty-state {
+        border: 1px dashed rgba(148, 163, 184, 0.35);
+        border-radius: 12px;
+        padding: 24px;
+        text-align: center;
+        font-size: 0.9rem;
+        color: #94a3b8;
+      }
+
+      ul.inline-list {
+        margin: 0;
+        padding-left: 1.25rem;
+        color: #cbd5f5;
+        font-size: 0.9rem;
+      }
     </style>
   </head>
   <body>
     <main>
-      <header>
-        <h1>KinGraph Paste Preview</h1>
-        <p class="status">Paste HTML on the left to extract and review structured data.</p>
+      <header class="header">
+        <div class="header-meta">
+          <h1>KinGraph Workbench</h1>
+          <p class="status">
+            Extract structured data from narrative sources, then organize records and individuals for future
+            genealogical linkage work.
+          </p>
+        </div>
+        <nav class="tabs" role="tablist">
+          <button class="tab" id="tab-records" data-view="records" role="tab" aria-selected="true">Records</button>
+          <button class="tab" id="tab-individuals" data-view="individuals" role="tab" aria-selected="false">
+            Individuals
+          </button>
+        </nav>
       </header>
-      <div class="layout">
-        <section class="panel">
-          <div>
-            <label for="html-input">Source HTML</label>
-            <textarea id="html-input" placeholder="Paste HTML here..."></textarea>
-          </div>
-          <button id="toggle-sources" type="button" disabled>Highlight sources</button>
-          <iframe id="source-preview" title="Provenance preview" hidden></iframe>
-        </section>
-        <section class="panel">
-          <div>
-            <label for="json-output">Structured record</label>
-            <pre id="json-output">Paste HTML to see extracted fields.</pre>
-          </div>
-          <div id="error" class="error" hidden></div>
-          <div>
-            <label>Field confidence</label>
-            <div id="confidence" class="confidence-list"></div>
-          </div>
-        </section>
-      </div>
+
+      <section id="records-view" class="view" role="tabpanel" aria-labelledby="tab-records">
+        <div class="layout">
+          <section class="panel stack">
+            <header>
+              <h2>Source extraction</h2>
+            </header>
+            <div>
+              <label for="html-input">Source HTML</label>
+              <textarea id="html-input" placeholder="Paste HTML here..."></textarea>
+            </div>
+            <button id="toggle-sources" type="button" disabled>Highlight sources</button>
+            <iframe id="source-preview" title="Provenance preview" hidden></iframe>
+          </section>
+
+          <section class="panel stack">
+            <header>
+              <h2>Extracted record</h2>
+              <span id="provenance-count" class="pill" hidden></span>
+            </header>
+            <div>
+              <label for="json-output">Structured record</label>
+              <pre id="json-output">Paste HTML to see extracted fields.</pre>
+            </div>
+            <div id="error" class="error" hidden></div>
+            <div>
+              <label>Field confidence</label>
+              <div id="confidence" class="confidence-list"></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="secondary-grid">
+          <section class="panel" id="save-panel">
+            <header>
+              <h2>Save record</h2>
+            </header>
+            <p class="supporting-text">
+              Create a brand new individual or link the extracted record to someone you have already captured.
+            </p>
+            <form id="save-form">
+              <fieldset>
+                <div class="choice">
+                  <label>
+                    <input type="radio" name="save-mode" id="save-mode-new" value="new" checked />
+                    Create a new individual
+                  </label>
+                  <div class="control">
+                    <label for="new-individual-name">Individual name</label>
+                    <input type="text" id="new-individual-name" name="new-individual-name" />
+                  </div>
+                </div>
+                <div class="choice">
+                  <label>
+                    <input type="radio" name="save-mode" id="save-mode-existing" value="existing" />
+                    Link to an existing individual
+                  </label>
+                  <div class="control">
+                    <label for="existing-individual-select">Choose individual</label>
+                    <select id="existing-individual-select" name="existing-individual"></select>
+                  </div>
+                </div>
+              </fieldset>
+              <div class="card-actions">
+                <button type="submit" id="save-button">Save record</button>
+                <span id="save-feedback" class="supporting-text" aria-live="polite"></span>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <header>
+              <h2>Saved records</h2>
+              <button type="button" id="clear-records" class="button-secondary">Clear all</button>
+            </header>
+            <div id="saved-records" class="saved-records-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section
+        id="individuals-view"
+        class="view"
+        role="tabpanel"
+        aria-labelledby="tab-individuals"
+        hidden
+      >
+        <div class="secondary-grid">
+          <section class="panel">
+            <header>
+              <h2>Individuals</h2>
+            </header>
+            <div id="individuals-list" class="individuals-list"></div>
+          </section>
+          <section class="panel">
+            <header>
+              <h2>Create individual</h2>
+            </header>
+            <form id="create-individual-form" class="choice">
+              <div class="control">
+                <label for="create-individual-name">Display name</label>
+                <input type="text" id="create-individual-name" required />
+              </div>
+              <div class="card-actions">
+                <button type="submit">Create</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
     </main>
+
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
