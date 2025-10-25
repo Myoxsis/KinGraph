@@ -815,6 +815,24 @@
         <div class="secondary-grid">
           <section class="panel">
             <header>
+              <h2>Data management</h2>
+            </header>
+            <p class="supporting-text">
+              Export or import all stored KinGraph data for backup or migration.
+            </p>
+            <div class="settings-form">
+              <div class="card-actions">
+                <button type="button" id="export-data">Export data</button>
+                <button type="button" id="import-data" class="button-secondary">Import data</button>
+                <button type="button" id="reset-data" class="button-secondary">Reset to defaults</button>
+              </div>
+            </div>
+            <input type="file" id="import-data-input" accept="application/json" hidden />
+            <span id="data-feedback" class="supporting-text" aria-live="polite"></span>
+          </section>
+
+          <section class="panel">
+            <header>
               <h2>Profession lists</h2>
             </header>
             <p class="supporting-text">
