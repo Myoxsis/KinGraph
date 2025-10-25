@@ -78,4 +78,40 @@ describe("extractIndividual end-to-end", () => {
     expect(confidence["birth.date"]).toBeGreaterThanOrEqual(0.6);
     expect(confidence["death.date"]).toBeGreaterThanOrEqual(0.7);
   });
+
+  it("extracts complex Geneanet-style trees", () => {
+    const html = readFixture("geneanet.html");
+    const record = extractIndividual(html);
+
+    expect(record.sourceUrl).toBe(
+      "https://gw.geneanet.org/tlechat71?lang=en&n=renault&oc=6&p=jean+julien",
+    );
+    expect(record.givenNames).toEqual(["Jean", "Julien"]);
+    expect(record.surname).toBe("RENAULT");
+    expect(record.sex).toBe("M");
+    expect(record.parents.father).toBe("Jean RENAULT");
+    expect(record.parents.mother).toBe("Marie Françoise TRIGER");
+    expect(record.spouses).toEqual(["Marie Françoise TOURET"]);
+    expect(record.children).toEqual(["Jean RENAULT", "Marie RENAULT"]);
+    expect(record.birth).toMatchObject({
+      raw: "July 24, 1813 - Saint-Longis, 72295, Sarthe, Pays de la Loire, France",
+      year: 1813,
+      month: 7,
+      day: 24,
+    });
+    expect(record.death).toMatchObject({
+      raw: "April 13, 1880 - Saint-Rémy-du-Plain, 72317, Sarthe, Pays de la Loire, France",
+      year: 1880,
+      month: 4,
+      day: 13,
+    });
+
+    const confidence = scoreConfidence(record);
+    expect(confidence.givenNames).toBeGreaterThanOrEqual(0.8);
+    expect(confidence.surname).toBeGreaterThanOrEqual(0.8);
+    expect(confidence["birth.date"]).toBeGreaterThanOrEqual(0.95);
+    expect(confidence["death.date"]).toBeGreaterThanOrEqual(0.95);
+    expect(confidence["parents.father"]).toBeGreaterThanOrEqual(0.9);
+    expect(confidence["parents.mother"]).toBeGreaterThanOrEqual(0.9);
+  });
 });
