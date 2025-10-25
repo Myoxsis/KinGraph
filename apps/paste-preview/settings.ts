@@ -75,6 +75,25 @@ export function initializeSettingsPage(): void {
   let dataFeedbackTimeout: number | null = null;
 
   function renderProfessionSettings(): void {
+    const recordCount = latestState.records.length;
+    const individualCount = latestState.individuals.length;
+    const definitionCount = latestState.professions.length + latestState.places.length;
+    const navRecordCount = document.getElementById("nav-record-count");
+    const navIndividualCount = document.getElementById("nav-individual-count");
+    const definitionMetric = document.getElementById("metric-definition-count");
+
+    if (navRecordCount) {
+      navRecordCount.textContent = recordCount.toString();
+    }
+
+    if (navIndividualCount) {
+      navIndividualCount.textContent = individualCount.toString();
+    }
+
+    if (definitionMetric) {
+      definitionMetric.textContent = definitionCount.toString();
+    }
+
     if (!latestState.professions.length) {
       const empty = document.createElement("div");
       empty.className = "empty-state";
