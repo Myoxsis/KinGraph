@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDateFragment } from "./extract";
+import { parseDateFragment, parseName } from "./extract";
 
 describe("parseDateFragment", () => {
   it("parses exact day precision dates", () => {
@@ -51,5 +51,47 @@ describe("parseDateFragment", () => {
   it("recognizes circa notation", () => {
     const result = parseDateFragment("c. 1902");
     expect(result).toMatchObject({ year: 1902, approx: true });
+  });
+});
+
+describe("parseName", () => {
+  it("extracts maiden names from parenthetical notation", () => {
+    const result = parseName("Jane Smith (née Doe)");
+    expect(result).toEqual({
+      givenNames: ["Jane"],
+      surname: "Smith",
+      maidenName: "Doe",
+      aliases: [],
+    });
+  });
+
+  it("captures quoted nicknames as aliases and strips suffixes", () => {
+    const result = parseName('Elizabeth "Liz" Carter Jr.');
+    expect(result).toEqual({
+      givenNames: ["Elizabeth"],
+      surname: "Carter",
+      maidenName: undefined,
+      aliases: ["Liz"],
+    });
+  });
+
+  it("collects parenthetical aliases", () => {
+    const result = parseName("Giovanni (John) Rossi");
+    expect(result).toEqual({
+      givenNames: ["Giovanni"],
+      surname: "Rossi",
+      maidenName: undefined,
+      aliases: ["John"],
+    });
+  });
+
+  it("handles maiden names without parentheses", () => {
+    const result = parseName("Mary Carter nee Johnson");
+    expect(result).toEqual({
+      givenNames: ["Mary"],
+      surname: "Carter",
+      maidenName: "Johnson",
+      aliases: [],
+    });
   });
 });

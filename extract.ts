@@ -81,6 +81,16 @@ export interface ParsedDateFragment {
   approx: boolean;
 }
 
+export interface ParsedName {
+  givenNames: string[];
+  surname?: string;
+  maidenName?: string;
+  aliases: string[];
+}
+
+const SUFFIX_PATTERN = /(,\s*)?(Jr|Sr|II|III|IV)\.?$/i;
+const MAIDEN_REGEX = /\b(?:née|nee)\s+([A-Za-z][A-Za-z'’\-]*(?:\s+[A-Za-z][A-Za-z'’\-]*)*)/i;
+
 export function parseDateFragment(text: string): ParsedDateFragment {
   const raw = text.trim();
   if (!raw) {
@@ -156,6 +166,75 @@ export function parseDateFragment(text: string): ParsedDateFragment {
   }
 
   return { raw, approx: false };
+}
+
+export function parseName(full: string): ParsedName {
+  const aliases: string[] = [];
+  let maidenName: string | undefined;
+
+  if (!full?.trim()) {
+    return { givenNames: [], aliases };
+  }
+
+  let working = full.trim();
+
+  // Extract nicknames enclosed in quotes.
+  working = working.replace(/"([^"\n]+)"/g, (_, alias: string) => {
+    pushUnique(aliases, alias.trim());
+    return "";
+  });
+
+  // Extract parenthetical aliases or maiden names.
+  working = working.replace(/\(([^)]+)\)/g, (_, inner: string) => {
+    const content = inner.trim();
+    if (!content) {
+      return "";
+    }
+
+    if (/^(?:née|nee)\b/i.test(content)) {
+      const extracted = content.replace(/^(?:née|nee)\b/i, "").trim();
+      if (extracted) {
+        maidenName = extracted;
+      }
+    } else {
+      pushUnique(aliases, content);
+    }
+
+    return "";
+  });
+
+  // Extract maiden names that are not wrapped in parentheses.
+  const maidenMatch = working.match(MAIDEN_REGEX);
+  if (maidenMatch) {
+    maidenName = maidenMatch[1].trim();
+    working = working.replace(MAIDEN_REGEX, "").trim();
+  }
+
+  // Remove common suffixes.
+  while (SUFFIX_PATTERN.test(working)) {
+    working = working.replace(SUFFIX_PATTERN, "").trim();
+  }
+
+  working = working.replace(/\s+/g, " ").trim();
+
+  const parts = working ? working.split(/\s+/) : [];
+
+  let surname: string | undefined;
+  let givenNames: string[] = [];
+
+  if (parts.length > 1) {
+    surname = parts.pop();
+    givenNames = parts;
+  } else if (parts.length === 1) {
+    givenNames = parts;
+  }
+
+  return {
+    givenNames,
+    surname,
+    maidenName,
+    aliases,
+  };
 }
 
 function extractFullNameFromHeadings(html: string, record: IndividualRecord, $: ReturnType<typeof load>) {
