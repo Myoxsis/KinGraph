@@ -239,6 +239,34 @@ button:hover {
   word-break: break-word;
 }
 
+.json-viewer .json-content {
+  margin: 0;
+}
+
+.json-viewer .text-slate-300 {
+  color: #cbd5f5;
+}
+
+.json-viewer .text-sky-400 {
+  color: #7dd3fc;
+}
+
+.json-viewer .text-emerald-300 {
+  color: #6ee7b7;
+}
+
+.json-viewer .text-orange-300 {
+  color: #fdba74;
+}
+
+.json-viewer .text-pink-300 {
+  color: #f9a8d4;
+}
+
+.json-viewer .text-amber-300 {
+  color: #fcd34d;
+}
+
 .json-viewer[data-empty="true"] {
   color: #94a3b8;
   display: flex;
