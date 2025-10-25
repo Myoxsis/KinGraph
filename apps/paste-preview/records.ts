@@ -12,7 +12,9 @@ import {
 } from "@/storage";
 import {
   buildHighlightDocument,
+  formatDate,
   formatTimestamp,
+  getLatestRecordForIndividual,
   getRecordSummary,
   getSuggestedIndividualName,
   highlightJson,
@@ -299,7 +301,28 @@ export function initializeRecordsPage(): void {
     for (const individual of sorted) {
       const option = document.createElement("option");
       option.value = individual.id;
-      option.textContent = individual.name;
+      let label = individual.name;
+
+      const latestRecord = getLatestRecordForIndividual(individual.id, latestState.records);
+      if (latestRecord) {
+        const birthDate = formatDate(latestRecord.record.birth);
+        const deathDate = formatDate(latestRecord.record.death);
+        const details: string[] = [];
+
+        if (birthDate) {
+          details.push(`b. ${birthDate}`);
+        }
+
+        if (deathDate) {
+          details.push(`d. ${deathDate}`);
+        }
+
+        if (details.length) {
+          label = `${individual.name} (${details.join(" – ")})`;
+        }
+      }
+
+      option.textContent = label;
       if (individual.id === previousValue) {
         option.selected = true;
       }
