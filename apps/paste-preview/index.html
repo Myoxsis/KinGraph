@@ -155,152 +155,152 @@
               genealogical linkage work.
             </p>
 
-            <section class="view">
-        <div class="layout">
-          <section class="panel stack">
-            <header>
-              <h2>Source extraction</h2>
-            </header>
-            <div>
-              <label for="html-input">Source HTML</label>
-              <textarea id="html-input" placeholder="Paste HTML here..."></textarea>
-              <details class="preprocess-hints">
-                <summary>Suggested clean-up steps</summary>
-                <ul>
-                  <li>Remove navigation, advertisements, and unrelated footers.</li>
-                  <li>Strip duplicate whitespace and convert smart quotes to straight quotes.</li>
-                  <li>Ensure dates use consistent formats (e.g., 12 Jan 1893).</li>
-                  <li>Include the full paragraph or table row that contains the subject.</li>
-                </ul>
-              </details>
-            </div>
-            <div class="extraction-toolbar" role="group" aria-label="Extraction helpers">
-              <div class="toolbar-chips" id="sample-chip-row" aria-label="Sample snippets"></div>
-              <label class="toolbar-toggle" for="auto-extract">
-                <input type="checkbox" id="auto-extract" checked />
-                <span>Auto extract</span>
-              </label>
-              <div class="toolbar-status" aria-live="polite">
-                <span id="char-count">0 characters</span>
-                <span id="last-run">Last extracted — never</span>
-              </div>
-              <div class="toolbar-actions">
-                <button id="toggle-sources" type="button" disabled>Highlight sources</button>
-                <button id="reextract" type="button" class="button-secondary" disabled>Run extract</button>
-                <button id="clear-input" type="button" class="button-secondary" disabled>Clear input</button>
-              </div>
-            </div>
-            <iframe id="source-preview" title="Provenance preview" hidden></iframe>
-            <footer class="extraction-helper" id="extraction-helper" aria-live="polite">
-              <span class="helper-label">Last extracted</span>
-              <time id="last-run-footer">Never</time>
-            </footer>
-          </section>
-
-          <section class="panel stack">
-            <header>
-              <h2>Extracted record</h2>
-              <span id="provenance-count" class="pill" hidden></span>
-            </header>
-            <div>
-              <label for="json-output">Structured record</label>
-              <div id="json-output" class="json-viewer" data-empty="true">Paste HTML to see extracted fields.</div>
-            </div>
-            <div id="error" class="error" hidden></div>
-            <div>
-              <label>Field confidence</label>
-              <div id="confidence" class="confidence-list"></div>
-            </div>
-          </section>
-        </div>
-
-        <div class="secondary-grid">
-          <section class="panel" id="save-panel">
-            <header>
-              <h2>Save record</h2>
-            </header>
-            <p class="supporting-text">
-              Create a brand new individual or link the extracted record to someone you have already captured.
-            </p>
-            <form id="save-form">
-              <fieldset>
-                <div class="choice">
-                  <label>
-                    <input type="radio" name="save-mode" id="save-mode-new" value="new" checked />
-                    Create a new individual
-                  </label>
-                  <div class="control">
-                    <label for="new-individual-name">Individual name</label>
-                    <input type="text" id="new-individual-name" name="new-individual-name" />
+            <div class="workspace-grid">
+              <section class="workspace-primary" aria-label="Extraction workspace">
+                <section class="workspace-section workspace-section--layer workspace-section--stack">
+                  <header>
+                    <h2>Source extraction</h2>
+                  </header>
+                  <div>
+                    <label for="html-input">Source HTML</label>
+                    <textarea id="html-input" placeholder="Paste HTML here..."></textarea>
+                    <details class="preprocess-hints">
+                      <summary>Suggested clean-up steps</summary>
+                      <ul>
+                        <li>Remove navigation, advertisements, and unrelated footers.</li>
+                        <li>Strip duplicate whitespace and convert smart quotes to straight quotes.</li>
+                        <li>Ensure dates use consistent formats (e.g., 12 Jan 1893).</li>
+                        <li>Include the full paragraph or table row that contains the subject.</li>
+                      </ul>
+                    </details>
                   </div>
-                </div>
-                <div class="choice">
-                  <label>
-                    <input type="radio" name="save-mode" id="save-mode-existing" value="existing" />
-                    Link to an existing individual
-                  </label>
-                  <div class="control">
-                    <label for="existing-individual-select">Choose individual</label>
-                    <select id="existing-individual-select" name="existing-individual"></select>
+                  <div class="extraction-toolbar" role="group" aria-label="Extraction helpers">
+                    <div class="toolbar-chips" id="sample-chip-row" aria-label="Sample snippets"></div>
+                    <label class="toolbar-toggle" for="auto-extract">
+                      <input type="checkbox" id="auto-extract" checked />
+                      <span>Auto extract</span>
+                    </label>
+                    <div class="toolbar-status" aria-live="polite">
+                      <span id="char-count">0 characters</span>
+                      <span id="last-run">Last extracted — never</span>
+                    </div>
+                    <div class="toolbar-actions">
+                      <button id="toggle-sources" type="button" disabled>Highlight sources</button>
+                      <button id="reextract" type="button" class="button-secondary" disabled>Run extract</button>
+                      <button id="clear-input" type="button" class="button-secondary" disabled>Clear input</button>
+                    </div>
                   </div>
-                </div>
-              </fieldset>
-              <div id="match-suggestions" class="match-suggestions" hidden>
-                <p class="supporting-text">
-                  This record resembles existing individuals. Select a match to fill in the link automatically.
-                </p>
-                <ul id="match-suggestions-list" class="match-suggestions-list"></ul>
-              </div>
-              <div class="card-actions">
-                <button type="submit" id="save-button">Save record</button>
-                <span id="save-feedback" class="supporting-text" aria-live="polite"></span>
-              </div>
-            </form>
-          </section>
+                  <iframe id="source-preview" title="Provenance preview" hidden></iframe>
+                  <footer class="extraction-helper" id="extraction-helper" aria-live="polite">
+                    <span class="helper-label">Last extracted</span>
+                    <time id="last-run-footer">Never</time>
+                  </footer>
+                </section>
 
-          <section class="panel">
-            <header>
-              <h2>Saved records</h2>
-              <button type="button" id="clear-records" class="button-secondary">Clear all</button>
-            </header>
-            <div id="saved-records" class="saved-records">
-              <form id="records-filters" class="records-filters" autocomplete="off">
-                <div class="filter-field">
-                  <label for="filter-individual">Individual</label>
-                  <select id="filter-individual" name="individual"></select>
-                </div>
-                <div class="filter-field filter-date">
-                  <label for="filter-start-date">From</label>
-                  <input type="date" id="filter-start-date" name="start" />
-                </div>
-                <div class="filter-field filter-date">
-                  <label for="filter-end-date">To</label>
-                  <input type="date" id="filter-end-date" name="end" />
-                </div>
-                <div class="filter-field filter-confidence">
-                  <label for="filter-confidence">Confidence</label>
-                  <div class="slider-control">
-                    <input
-                      type="range"
-                      id="filter-confidence"
-                      name="confidence"
-                      min="0"
-                      max="100"
-                      step="5"
-                      value="0"
-                    />
-                    <output id="filter-confidence-value" for="filter-confidence">0%</output>
+                <section class="workspace-section workspace-section--layer workspace-section--stack">
+                  <header>
+                    <h2>Extracted record</h2>
+                    <span id="provenance-count" class="pill" hidden></span>
+                  </header>
+                  <div>
+                    <label for="json-output">Structured record</label>
+                    <div id="json-output" class="json-viewer" data-empty="true">Paste HTML to see extracted fields.</div>
                   </div>
-                </div>
-                <div class="filter-actions">
-                  <button type="reset" class="button-secondary">Reset filters</button>
-                </div>
-              </form>
-              <div class="records-timeline" id="records-timeline"></div>
+                  <div id="error" class="error" hidden></div>
+                  <div>
+                    <label>Field confidence</label>
+                    <div id="confidence" class="confidence-list"></div>
+                  </div>
+                </section>
+              </section>
+
+              <section class="workspace-secondary" aria-label="Record management">
+                <section class="workspace-section workspace-section--layer workspace-section--stack" id="save-panel">
+                  <header>
+                    <h2>Save record</h2>
+                  </header>
+                  <p class="supporting-text">
+                    Create a brand new individual or link the extracted record to someone you have already captured.
+                  </p>
+                  <form id="save-form">
+                    <fieldset>
+                      <div class="choice">
+                        <label>
+                          <input type="radio" name="save-mode" id="save-mode-new" value="new" checked />
+                          Create a new individual
+                        </label>
+                        <div class="control">
+                          <label for="new-individual-name">Individual name</label>
+                          <input type="text" id="new-individual-name" name="new-individual-name" />
+                        </div>
+                      </div>
+                      <div class="choice">
+                        <label>
+                          <input type="radio" name="save-mode" id="save-mode-existing" value="existing" />
+                          Link to an existing individual
+                        </label>
+                        <div class="control">
+                          <label for="existing-individual-select">Choose individual</label>
+                          <select id="existing-individual-select" name="existing-individual"></select>
+                        </div>
+                      </div>
+                    </fieldset>
+                    <div id="match-suggestions" class="match-suggestions" hidden>
+                      <p class="supporting-text">
+                        This record resembles existing individuals. Select a match to fill in the link automatically.
+                      </p>
+                      <ul id="match-suggestions-list" class="match-suggestions-list"></ul>
+                    </div>
+                    <div class="card-actions">
+                      <button type="submit" id="save-button">Save record</button>
+                      <span id="save-feedback" class="supporting-text" aria-live="polite"></span>
+                    </div>
+                  </form>
+                </section>
+
+                <section class="workspace-section workspace-section--layer">
+                  <header>
+                    <h2>Saved records</h2>
+                    <button type="button" id="clear-records" class="button-secondary">Clear all</button>
+                  </header>
+                  <div id="saved-records" class="saved-records">
+                    <form id="records-filters" class="records-filters" autocomplete="off">
+                      <div class="filter-field">
+                        <label for="filter-individual">Individual</label>
+                        <select id="filter-individual" name="individual"></select>
+                      </div>
+                      <div class="filter-field filter-date">
+                        <label for="filter-start-date">From</label>
+                        <input type="date" id="filter-start-date" name="start" />
+                      </div>
+                      <div class="filter-field filter-date">
+                        <label for="filter-end-date">To</label>
+                        <input type="date" id="filter-end-date" name="end" />
+                      </div>
+                      <div class="filter-field filter-confidence">
+                        <label for="filter-confidence">Confidence</label>
+                        <div class="slider-control">
+                          <input
+                            type="range"
+                            id="filter-confidence"
+                            name="confidence"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value="0"
+                          />
+                          <output id="filter-confidence-value" for="filter-confidence">0%</output>
+                        </div>
+                      </div>
+                      <div class="filter-actions">
+                        <button type="reset" class="button-secondary">Reset filters</button>
+                      </div>
+                    </form>
+                    <div class="records-timeline" id="records-timeline"></div>
+                  </div>
+                </section>
+              </section>
             </div>
-          </section>
-        </div>
-            </section>
           </section>
         </main>
       </div>
