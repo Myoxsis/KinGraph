@@ -1432,6 +1432,11 @@ export function initializeRecordsPage(): void {
       }
     }
 
+    const roleLabel = latestState.roles.find((role) => role.id === individual.roleId)?.label;
+    if (roleLabel) {
+      label = `${label} • ${roleLabel}`;
+    }
+
     return label;
   }
 

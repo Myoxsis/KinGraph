@@ -97,10 +97,12 @@ interface IndividualsElements {
   list: HTMLDivElement;
   createForm: HTMLFormElement;
   createNameInput: HTMLInputElement;
+  createRoleSelect: HTMLSelectElement;
   createFeedback: HTMLSpanElement | null;
   editForm: HTMLFormElement;
   editNameInput: HTMLInputElement;
   editNotesInput: HTMLTextAreaElement;
+  editRoleSelect: HTMLSelectElement;
   editSaveButton: HTMLButtonElement;
   editFeedback: HTMLSpanElement | null;
   editModal: HTMLDivElement;
@@ -855,10 +857,12 @@ export function initializeIndividualsPage(): void {
     list,
     createForm,
     createNameInput,
+    createRoleSelect,
     createFeedback,
     editForm,
     editNameInput,
     editNotesInput,
+    editRoleSelect,
     editSaveButton,
     editFeedback,
     editModal,
@@ -1218,6 +1222,50 @@ export function initializeIndividualsPage(): void {
     return latestState.individuals.find((individual) => individual.id === selectedIndividualId) ?? null;
   }
 
+  function getRoleLabel(roleId: string | null): string | null {
+    if (!roleId) {
+      return null;
+    }
+
+    const match = latestState.roles.find((role) => role.id === roleId);
+    return match ? match.label : null;
+  }
+
+  function populateRoleSelectOptions(selected: typeof latestState.individuals[number] | null): void {
+    const sortedRoles = [...latestState.roles].sort((a, b) => a.label.localeCompare(b.label));
+    const placeholderText = sortedRoles.length ? "No role assigned" : "No roles available";
+
+    const fillSelect = (select: HTMLSelectElement, desired: string | null): void => {
+      const fragment = document.createDocumentFragment();
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = placeholderText;
+      fragment.appendChild(placeholder);
+
+      for (const role of sortedRoles) {
+        const option = document.createElement("option");
+        option.value = role.id;
+        option.textContent = role.label;
+        fragment.appendChild(option);
+      }
+
+      select.replaceChildren(fragment);
+
+      if (desired && sortedRoles.some((role) => role.id === desired)) {
+        select.value = desired;
+      } else {
+        select.value = "";
+      }
+    };
+
+    const createDesired = createRoleSelect.value || null;
+    fillSelect(createRoleSelect, createDesired);
+
+    const editDesired = selected?.roleId ?? null;
+    fillSelect(editRoleSelect, editDesired);
+    editRoleSelect.disabled = !selected;
+  }
+
   function renderIndividuals(): void {
     const recordCount = latestState.records.length;
     const individualCount = latestState.individuals.length;
@@ -1251,7 +1299,7 @@ export function initializeIndividualsPage(): void {
     table.className = "data-table";
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
-    for (const label of ["Name", "Linked records", "Updated", "Actions"]) {
+    for (const label of ["Name", "Role", "Linked records", "Updated", "Actions"]) {
       const th = document.createElement("th");
       th.scope = "col";
       th.textContent = label;
@@ -1282,6 +1330,11 @@ export function initializeIndividualsPage(): void {
           }
 
           if (individual.notes.toLowerCase().includes(individualSearchQuery)) {
+            return true;
+          }
+
+          const roleLabel = getRoleLabel(individual.roleId);
+          if (roleLabel && roleLabel.toLowerCase().includes(individualSearchQuery)) {
             return true;
           }
 
@@ -1317,6 +1370,10 @@ export function initializeIndividualsPage(): void {
         notes.textContent = individual.notes;
         nameCell.appendChild(notes);
       }
+
+      const roleCell = document.createElement("td");
+      const roleLabel = getRoleLabel(individual.roleId);
+      roleCell.textContent = roleLabel ?? "—";
 
       const linkedCell = document.createElement("td");
       const linkedRecords = linkedRecordsByIndividual.get(individual.id) ?? [];
@@ -1367,7 +1424,7 @@ export function initializeIndividualsPage(): void {
       editButton.dataset.individualId = individual.id;
       actionsCell.appendChild(editButton);
 
-      row.append(nameCell, linkedCell, updatedCell, actionsCell);
+      row.append(nameCell, roleCell, linkedCell, updatedCell, actionsCell);
       tbody.appendChild(row);
     }
 
@@ -1569,20 +1626,24 @@ export function initializeIndividualsPage(): void {
 
   function renderSelectedIndividual(): void {
     const selected = getSelectedIndividual();
+    populateRoleSelectOptions(selected);
     const hasSelection = selected !== null;
 
     editNameInput.disabled = !hasSelection;
     editNotesInput.disabled = !hasSelection;
+    editRoleSelect.disabled = !hasSelection;
     editSaveButton.disabled = !hasSelection;
 
     if (!selected) {
       editForm.reset();
+      editRoleSelect.value = "";
       clearProfileEditor();
       return;
     }
 
     editNameInput.value = selected.name;
     editNotesInput.value = selected.notes;
+    editRoleSelect.value = selected.roleId ?? "";
     loadProfileEditor(selected);
   }
 
@@ -1610,6 +1671,8 @@ export function initializeIndividualsPage(): void {
   createForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const name = createNameInput.value.trim();
+    const roleValue = createRoleSelect.value;
+    const roleId = roleValue ? roleValue : null;
 
     if (!name) {
       createNameInput.focus();
@@ -1617,8 +1680,9 @@ export function initializeIndividualsPage(): void {
     }
 
     try {
-      const individual = await createIndividual(name);
+      const individual = await createIndividual(name, { roleId });
       createNameInput.value = "";
+      createRoleSelect.value = "";
       if (createFeedback) {
         createFeedback.textContent = `Created individual ${individual.name}.`;
       }
@@ -1641,6 +1705,8 @@ export function initializeIndividualsPage(): void {
 
     const name = editNameInput.value.trim();
     const notes = editNotesInput.value.trim();
+    const roleValue = editRoleSelect.value;
+    const roleId = roleValue ? roleValue : null;
 
     if (!name) {
       editNameInput.focus();
@@ -1650,7 +1716,7 @@ export function initializeIndividualsPage(): void {
       return;
     }
 
-    if (name === selected.name && notes === selected.notes) {
+    if (name === selected.name && notes === selected.notes && roleId === (selected.roleId ?? null)) {
       if (editFeedback) {
         editFeedback.textContent = "No changes to save.";
       }
@@ -1658,7 +1724,7 @@ export function initializeIndividualsPage(): void {
     }
 
     try {
-      const updated = await updateIndividual({ id: selected.id, name, notes });
+      const updated = await updateIndividual({ id: selected.id, name, notes, roleId });
 
       if (!updated) {
         if (editFeedback) {
@@ -1760,10 +1826,12 @@ function getIndividualsElements(): IndividualsElements | null {
   const list = document.getElementById("individuals-list");
   const createForm = document.getElementById("create-individual-form");
   const createNameInput = document.getElementById("create-individual-name");
+  const createRoleSelect = document.getElementById("create-individual-role");
   const createFeedback = document.getElementById("individuals-feedback");
   const editForm = document.getElementById("edit-individual-form");
   const editNameInput = document.getElementById("edit-individual-name");
   const editNotesInput = document.getElementById("edit-individual-notes");
+  const editRoleSelect = document.getElementById("edit-individual-role");
   const editFeedback = document.getElementById("edit-individual-feedback");
   const editSaveButton = document.getElementById("save-individual-button");
   const editModal = document.getElementById("individual-edit-modal");
@@ -1783,9 +1851,11 @@ function getIndividualsElements(): IndividualsElements | null {
       list instanceof HTMLDivElement &&
       createForm instanceof HTMLFormElement &&
       createNameInput instanceof HTMLInputElement &&
+      createRoleSelect instanceof HTMLSelectElement &&
       editForm instanceof HTMLFormElement &&
       editNameInput instanceof HTMLInputElement &&
       editNotesInput instanceof HTMLTextAreaElement &&
+      editRoleSelect instanceof HTMLSelectElement &&
       editSaveButton instanceof HTMLButtonElement &&
       editModal instanceof HTMLDivElement &&
       editModalClose instanceof HTMLButtonElement &&
@@ -1802,10 +1872,12 @@ function getIndividualsElements(): IndividualsElements | null {
     list,
     createForm,
     createNameInput,
+    createRoleSelect,
     createFeedback: createFeedback instanceof HTMLSpanElement ? createFeedback : null,
     editForm,
     editNameInput,
     editNotesInput,
+    editRoleSelect,
     editSaveButton,
     editFeedback: editFeedback instanceof HTMLSpanElement ? editFeedback : null,
     editModal,

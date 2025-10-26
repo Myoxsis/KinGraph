@@ -1,16 +1,19 @@
 import type { PlaceCategory } from "../../places";
 import {
   clearAll,
+  deleteIndividualRoleDefinition,
   deletePlaceDefinition,
   deleteProfessionDefinition,
   exportAllData,
   getState,
   importAllData,
+  saveIndividualRoleDefinition,
   savePlaceDefinition,
   saveProfessionDefinition,
   subscribe,
   type StoredPlaceDefinition,
   type StoredProfessionDefinition,
+  type StoredRoleDefinition,
 } from "@/storage";
 import { formatTimestamp, parseAliasInput } from "./shared/utils";
 
@@ -22,6 +25,12 @@ interface SettingsElements {
   professionCancelButton: HTMLButtonElement;
   professionFeedback: HTMLSpanElement;
   professionList: HTMLDivElement;
+  roleForm: HTMLFormElement;
+  roleLabelInput: HTMLInputElement;
+  roleSubmitButton: HTMLButtonElement;
+  roleCancelButton: HTMLButtonElement;
+  roleFeedback: HTMLSpanElement;
+  roleList: HTMLDivElement;
   placeForm: HTMLFormElement;
   placeLabelInput: HTMLInputElement;
   placeAliasesInput: HTMLInputElement;
@@ -52,6 +61,12 @@ export function initializeSettingsPage(): void {
     professionCancelButton,
     professionFeedback,
     professionList,
+    roleForm,
+    roleLabelInput,
+    roleSubmitButton,
+    roleCancelButton,
+    roleFeedback,
+    roleList,
     placeForm,
     placeLabelInput,
     placeAliasesInput,
@@ -70,14 +85,17 @@ export function initializeSettingsPage(): void {
   let latestState = getState();
   let editingProfessionId: string | null = null;
   let editingPlaceId: string | null = null;
+  let editingRoleId: string | null = null;
   let professionFeedbackTimeout: number | null = null;
   let placeFeedbackTimeout: number | null = null;
+  let roleFeedbackTimeout: number | null = null;
   let dataFeedbackTimeout: number | null = null;
 
   function renderProfessionSettings(): void {
     const recordCount = latestState.records.length;
     const individualCount = latestState.individuals.length;
-    const definitionCount = latestState.professions.length + latestState.places.length;
+    const definitionCount =
+      latestState.professions.length + latestState.places.length + latestState.roles.length;
     const navRecordCount = document.getElementById("nav-record-count");
     const navIndividualCount = document.getElementById("nav-individual-count");
     const definitionMetric = document.getElementById("metric-definition-count");
@@ -230,6 +248,54 @@ export function initializeSettingsPage(): void {
     placeList.replaceChildren(fragment);
   }
 
+  function renderRoleSettings(): void {
+    if (!latestState.roles.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "No role definitions yet. Add one using the form.";
+      roleList.replaceChildren(empty);
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    const entries = [...latestState.roles].sort((a, b) => a.label.localeCompare(b.label));
+
+    for (const definition of entries) {
+      const card = document.createElement("div");
+      card.className = "settings-card";
+
+      const header = document.createElement("header");
+      const title = document.createElement("h3");
+      title.className = "settings-card-title";
+      title.textContent = definition.label;
+      const meta = document.createElement("span");
+      meta.className = "settings-meta";
+      meta.textContent = `Updated ${formatTimestamp(definition.updatedAt)}`;
+      header.append(title, meta);
+      card.appendChild(header);
+
+      const actions = document.createElement("div");
+      actions.className = "card-actions";
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "Edit";
+      edit.dataset.action = "edit";
+      edit.dataset.id = definition.id;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Delete";
+      remove.className = "button-secondary";
+      remove.dataset.action = "delete";
+      remove.dataset.id = definition.id;
+      actions.append(edit, remove);
+      card.appendChild(actions);
+
+      fragment.appendChild(card);
+    }
+
+    roleList.replaceChildren(fragment);
+  }
+
   function resetProfessionForm(): void {
     professionForm.reset();
     editingProfessionId = null;
@@ -243,6 +309,13 @@ export function initializeSettingsPage(): void {
     placeCancelButton.hidden = true;
     placeSubmitButton.textContent = "Save place";
     placeCategorySelect.value = "";
+  }
+
+  function resetRoleForm(): void {
+    roleForm.reset();
+    editingRoleId = null;
+    roleCancelButton.hidden = true;
+    roleSubmitButton.textContent = "Save role";
   }
 
   function showDataFeedback(message: string): void {
@@ -278,6 +351,17 @@ export function initializeSettingsPage(): void {
     }, 4000);
   }
 
+  function showRoleFeedback(message: string): void {
+    roleFeedback.textContent = message;
+    if (roleFeedbackTimeout !== null) {
+      window.clearTimeout(roleFeedbackTimeout);
+    }
+    roleFeedbackTimeout = window.setTimeout(() => {
+      roleFeedback.textContent = "";
+      roleFeedbackTimeout = null;
+    }, 4000);
+  }
+
   function setProfessionEditing(definition: StoredProfessionDefinition): void {
     editingProfessionId = definition.id;
     professionLabelInput.value = definition.label;
@@ -295,6 +379,14 @@ export function initializeSettingsPage(): void {
     placeCancelButton.hidden = false;
     placeSubmitButton.textContent = "Update place";
     placeLabelInput.focus();
+  }
+
+  function setRoleEditing(definition: StoredRoleDefinition): void {
+    editingRoleId = definition.id;
+    roleLabelInput.value = definition.label;
+    roleCancelButton.hidden = false;
+    roleSubmitButton.textContent = "Update role";
+    roleLabelInput.focus();
   }
 
   async function handleProfessionAction(event: MouseEvent): Promise<void> {
@@ -358,11 +450,47 @@ export function initializeSettingsPage(): void {
             resetPlaceForm();
           }
         } catch (error) {
-          console.error("Failed to delete place", error);
-          showPlaceFeedback("Unable to remove place.");
-        }
+        console.error("Failed to delete place", error);
+        showPlaceFeedback("Unable to remove place.");
       }
     }
+  }
+
+  async function handleRoleAction(event: MouseEvent): Promise<void> {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
+    if (!button) {
+      return;
+    }
+
+    const id = button.dataset.id;
+
+    if (!id) {
+      return;
+    }
+
+    if (button.dataset.action === "edit") {
+      const definition = latestState.roles.find((item) => item.id === id);
+      if (definition) {
+        setRoleEditing(definition);
+      }
+    } else if (button.dataset.action === "delete") {
+      const confirmed = window.confirm("Remove this role definition?");
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await deleteIndividualRoleDefinition(id);
+        showRoleFeedback("Role removed.");
+        if (editingRoleId === id) {
+          resetRoleForm();
+        }
+      } catch (error) {
+        console.error("Failed to delete role", error);
+        showRoleFeedback("Unable to remove role.");
+      }
+    }
+  }
   }
 
   professionForm.addEventListener("submit", async (event) => {
@@ -399,6 +527,34 @@ export function initializeSettingsPage(): void {
 
   professionList.addEventListener("click", (event) => {
     void handleProfessionAction(event as MouseEvent);
+  });
+
+  roleForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const label = roleLabelInput.value.trim();
+
+    if (!label) {
+      roleLabelInput.focus();
+      return;
+    }
+
+    try {
+      await saveIndividualRoleDefinition({ id: editingRoleId ?? undefined, label });
+      showRoleFeedback(editingRoleId ? "Role updated." : "Role added.");
+      resetRoleForm();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showRoleFeedback(message);
+    }
+  });
+
+  roleCancelButton.addEventListener("click", () => {
+    resetRoleForm();
+    showRoleFeedback("Edit cancelled.");
+  });
+
+  roleList.addEventListener("click", (event) => {
+    void handleRoleAction(event as MouseEvent);
   });
 
   placeForm.addEventListener("submit", async (event) => {
@@ -506,13 +662,17 @@ export function initializeSettingsPage(): void {
     }
   });
 
+  resetRoleForm();
+
   subscribe((state) => {
     latestState = state;
     renderProfessionSettings();
+    renderRoleSettings();
     renderPlaceSettings();
   });
 
   renderProfessionSettings();
+  renderRoleSettings();
   renderPlaceSettings();
 }
 
@@ -524,6 +684,12 @@ function getSettingsElements(): SettingsElements | null {
   const professionCancelButton = document.getElementById("profession-cancel");
   const professionFeedback = document.getElementById("profession-feedback");
   const professionList = document.getElementById("profession-list");
+  const roleForm = document.getElementById("role-form");
+  const roleLabelInput = document.getElementById("role-label");
+  const roleSubmitButton = document.getElementById("role-submit");
+  const roleCancelButton = document.getElementById("role-cancel");
+  const roleFeedback = document.getElementById("role-feedback");
+  const roleList = document.getElementById("role-list");
   const placeForm = document.getElementById("place-form");
   const placeLabelInput = document.getElementById("place-label");
   const placeAliasesInput = document.getElementById("place-aliases");
@@ -547,6 +713,12 @@ function getSettingsElements(): SettingsElements | null {
       professionCancelButton instanceof HTMLButtonElement &&
       professionFeedback instanceof HTMLSpanElement &&
       professionList instanceof HTMLDivElement &&
+      roleForm instanceof HTMLFormElement &&
+      roleLabelInput instanceof HTMLInputElement &&
+      roleSubmitButton instanceof HTMLButtonElement &&
+      roleCancelButton instanceof HTMLButtonElement &&
+      roleFeedback instanceof HTMLSpanElement &&
+      roleList instanceof HTMLDivElement &&
       placeForm instanceof HTMLFormElement &&
       placeLabelInput instanceof HTMLInputElement &&
       placeAliasesInput instanceof HTMLInputElement &&
@@ -573,6 +745,12 @@ function getSettingsElements(): SettingsElements | null {
     professionCancelButton,
     professionFeedback,
     professionList,
+    roleForm,
+    roleLabelInput,
+    roleSubmitButton,
+    roleCancelButton,
+    roleFeedback,
+    roleList,
     placeForm,
     placeLabelInput,
     placeAliasesInput,
