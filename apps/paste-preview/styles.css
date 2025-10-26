@@ -1254,6 +1254,121 @@ iframe {
   color: var(--text-muted);
 }
 
+.relationship-linker {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.relationship-linker-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.relationship-linker-status {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.relationship-linker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.relationship-linker-empty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.relationship-linker-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+}
+
+.relationship-linker-chip.is-missing {
+  border: 1px dashed var(--border);
+}
+
+.relationship-linker-chip-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.relationship-linker-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.relationship-linker-select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+.relationship-linker-add {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.relationship-linker-add:hover,
+.relationship-linker-add:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  outline: none;
+}
+
+.relationship-linker-add:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--surface);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+.relationship-linker-remove {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.relationship-linker-remove:hover,
+.relationship-linker-remove:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
 .field-suggestions {
   display: flex;
   flex-wrap: wrap;
