@@ -456,41 +456,6 @@ export function initializeSettingsPage(): void {
     }
   }
 
-  async function handleRoleAction(event: MouseEvent): Promise<void> {
-    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
-    if (!button) {
-      return;
-    }
-
-    const id = button.dataset.id;
-
-    if (!id) {
-      return;
-    }
-
-    if (button.dataset.action === "edit") {
-      const definition = latestState.roles.find((item) => item.id === id);
-      if (definition) {
-        setRoleEditing(definition);
-      }
-    } else if (button.dataset.action === "delete") {
-      const confirmed = window.confirm("Remove this role definition?");
-      if (!confirmed) {
-        return;
-      }
-
-      try {
-        await deleteIndividualRoleDefinition(id);
-        showRoleFeedback("Role removed.");
-        if (editingRoleId === id) {
-          resetRoleForm();
-        }
-      } catch (error) {
-        console.error("Failed to delete role", error);
-        showRoleFeedback("Unable to remove role.");
-      }
-    }
-  }
   }
 
   professionForm.addEventListener("submit", async (event) => {
@@ -553,8 +518,43 @@ export function initializeSettingsPage(): void {
     showRoleFeedback("Edit cancelled.");
   });
 
-  roleList.addEventListener("click", (event) => {
-    void handleRoleAction(event as MouseEvent);
+  roleList.addEventListener("click", async (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
+    if (!button) {
+      return;
+    }
+
+    const id = button.dataset.id;
+
+    if (!id) {
+      return;
+    }
+
+    if (button.dataset.action === "edit") {
+      const definition = latestState.roles.find((item) => item.id === id);
+      if (definition) {
+        setRoleEditing(definition);
+      }
+      return;
+    }
+
+    if (button.dataset.action === "delete") {
+      const confirmed = window.confirm("Remove this role definition?");
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await deleteIndividualRoleDefinition(id);
+        showRoleFeedback("Role removed.");
+        if (editingRoleId === id) {
+          resetRoleForm();
+        }
+      } catch (error) {
+        console.error("Failed to delete role", error);
+        showRoleFeedback("Unable to remove role.");
+      }
+    }
   });
 
   placeForm.addEventListener("submit", async (event) => {

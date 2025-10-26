@@ -517,6 +517,22 @@ main.workspace {
   width: min(320px, 100%);
 }
 
+.gedcom-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gedcom-viewer textarea {
+  width: 100%;
+  min-height: 320px;
+  font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow: auto;
+}
+
 .tree-visualization-header {
   display: flex;
   flex-direction: column;
