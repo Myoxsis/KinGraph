@@ -11,6 +11,7 @@ import {
   type StoredRecord,
 } from "@/storage";
 import { formatTimestamp, getRecordSummary } from "./shared/utils";
+import { initializeWorkspaceSearch } from "./shared/search";
 import type { IndividualRecord } from "../../schema";
 
 const PROFILE_FIELD_KEYS = [
@@ -109,6 +110,9 @@ interface IndividualsElements {
   profileSaveButton: HTMLButtonElement;
   profileFeedback: HTMLSpanElement | null;
   profileUpdatedAt: HTMLSpanElement | null;
+  workspaceSearchForm: HTMLFormElement | null;
+  workspaceSearchInput: HTMLInputElement;
+  workspaceSearchClear: HTMLButtonElement | null;
 }
 
 const PROFILE_FIELD_CONFIGS: FieldConfig[] = [
@@ -863,6 +867,9 @@ export function initializeIndividualsPage(): void {
     profileSaveButton,
     profileFeedback,
     profileUpdatedAt,
+    workspaceSearchForm,
+    workspaceSearchInput,
+    workspaceSearchClear,
   } = elements;
 
   let latestState = getState();
@@ -870,6 +877,31 @@ export function initializeIndividualsPage(): void {
   let draftProfile: IndividualProfile = createEmptyProfile();
   let profileDirty = false;
   let profileSaving = false;
+  let individualSearchQuery = "";
+
+  const maybeSearchHandle = initializeWorkspaceSearch({
+    elements: {
+      form: workspaceSearchForm ?? undefined,
+      input: workspaceSearchInput,
+      clearButton: workspaceSearchClear ?? undefined,
+    },
+    onInput: (value) => {
+      individualSearchQuery = value.toLowerCase();
+      renderIndividuals();
+    },
+    onSubmit: (value) => {
+      individualSearchQuery = value.toLowerCase();
+      renderIndividuals();
+    },
+  });
+
+  if (!maybeSearchHandle) {
+    return;
+  }
+
+  const workspaceSearch = maybeSearchHandle;
+
+  individualSearchQuery = workspaceSearch.getValue().toLowerCase();
 
   const fieldRenderers: FieldRenderer[] = PROFILE_FIELD_CONFIGS.map((config) =>
     createFieldRenderer(config, handleFieldInput, handleSuggestionApply),
@@ -893,6 +925,8 @@ export function initializeIndividualsPage(): void {
     const navIndividualCount = document.getElementById("nav-individual-count");
     const individualMetric = document.getElementById("metric-individual-count");
 
+    workspaceSearchInput.disabled = individualCount === 0;
+
     if (navRecordCount) {
       navRecordCount.textContent = recordCount.toString();
     }
@@ -914,8 +948,44 @@ export function initializeIndividualsPage(): void {
     }
 
     const fragment = document.createDocumentFragment();
-    const individuals = [...latestState.individuals].sort((a, b) => a.name.localeCompare(b.name));
-    for (const individual of individuals) {
+    const sortedIndividuals = [...latestState.individuals].sort((a, b) => a.name.localeCompare(b.name));
+    const linkedRecordsByIndividual = new Map<string, StoredRecord[]>();
+
+    for (const record of latestState.records) {
+      if (!record.individualId) {
+        continue;
+      }
+
+      const existing = linkedRecordsByIndividual.get(record.individualId) ?? [];
+      existing.push(record);
+      linkedRecordsByIndividual.set(record.individualId, existing);
+    }
+
+    const filteredIndividuals = individualSearchQuery
+      ? sortedIndividuals.filter((individual) => {
+          const normalizedName = individual.name.toLowerCase();
+          if (normalizedName.includes(individualSearchQuery)) {
+            return true;
+          }
+
+          if (individual.notes.toLowerCase().includes(individualSearchQuery)) {
+            return true;
+          }
+
+          const linked = linkedRecordsByIndividual.get(individual.id) ?? [];
+          return linked.some((stored) => (stored.summary || "").toLowerCase().includes(individualSearchQuery));
+        })
+      : sortedIndividuals;
+
+    if (!filteredIndividuals.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "No individuals match your search.";
+      list.replaceChildren(empty);
+      return;
+    }
+
+    for (const individual of filteredIndividuals) {
       const card = document.createElement("article");
       card.className = "card";
       card.dataset.individualId = individual.id;
@@ -940,7 +1010,7 @@ export function initializeIndividualsPage(): void {
       header.append(title, meta);
       card.appendChild(header);
 
-      const linkedRecords = latestState.records.filter((record) => record.individualId === individual.id);
+      const linkedRecords = linkedRecordsByIndividual.get(individual.id) ?? [];
       const countLabel = document.createElement("p");
       countLabel.className = "supporting-text";
       countLabel.textContent = linkedRecords.length
@@ -1368,6 +1438,9 @@ function getIndividualsElements(): IndividualsElements | null {
   const profileSaveButton = document.getElementById("save-profile-button");
   const profileFeedback = document.getElementById("profile-feedback");
   const profileUpdatedAt = document.getElementById("profile-updated-at");
+  const workspaceSearchForm = document.getElementById("workspace-search-form");
+  const workspaceSearchInput = document.getElementById("workspace-search");
+  const workspaceSearchClear = document.getElementById("workspace-search-clear");
 
   if (
     !(
@@ -1380,7 +1453,8 @@ function getIndividualsElements(): IndividualsElements | null {
       editSaveButton instanceof HTMLButtonElement &&
       profileEditor instanceof HTMLDivElement &&
       profileFieldsContainer instanceof HTMLDivElement &&
-      profileSaveButton instanceof HTMLButtonElement
+      profileSaveButton instanceof HTMLButtonElement &&
+      workspaceSearchInput instanceof HTMLInputElement
     )
   ) {
     return null;
@@ -1403,5 +1477,9 @@ function getIndividualsElements(): IndividualsElements | null {
     profileSaveButton,
     profileFeedback: profileFeedback instanceof HTMLSpanElement ? profileFeedback : null,
     profileUpdatedAt: profileUpdatedAt instanceof HTMLSpanElement ? profileUpdatedAt : null,
+    workspaceSearchForm: workspaceSearchForm instanceof HTMLFormElement ? workspaceSearchForm : null,
+    workspaceSearchInput,
+    workspaceSearchClear:
+      workspaceSearchClear instanceof HTMLButtonElement ? workspaceSearchClear : null,
   };
 }

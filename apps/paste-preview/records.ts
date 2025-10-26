@@ -20,6 +20,7 @@ import {
   getSuggestedIndividualName,
   highlightJson,
 } from "./shared/utils";
+import { initializeWorkspaceSearch } from "./shared/search";
 
 type ConfidenceScores = ReturnType<typeof scoreConfidence>;
 
@@ -52,6 +53,16 @@ const DEFAULT_FILTERS: RecordFilterCriteria = {
   minConfidence: 0,
 };
 
+const CONFIDENCE_LABELS: Record<string, string> = {
+  givenNames: "Given names",
+  surname: "Surname",
+  maidenName: "Maiden name",
+  "birth.date": "Birth date",
+  "death.date": "Death date",
+  "parents.father": "Father",
+  "parents.mother": "Mother",
+};
+
 type ExtractionTrigger = "auto" | "manual" | "sample" | "load" | "reset";
 
 interface RecordsElements {
@@ -79,13 +90,15 @@ interface RecordsElements {
   clearRecordsButton: HTMLButtonElement;
   savedRecordsContainer: HTMLDivElement;
   recordsFiltersForm: HTMLFormElement;
-  filterSearchInput: HTMLInputElement;
   filterIndividualSelect: HTMLSelectElement;
   filterStartDateInput: HTMLInputElement;
   filterEndDateInput: HTMLInputElement;
   filterConfidenceInput: HTMLInputElement;
   filterConfidenceOutput: HTMLOutputElement;
   recordsTimeline: HTMLDivElement;
+  workspaceSearchForm: HTMLFormElement | null;
+  workspaceSearchInput: HTMLInputElement;
+  workspaceSearchClear: HTMLButtonElement | null;
 }
 
 const DEFAULT_HTML = "<h1>Jane Doe</h1><p>Born about 1892 to Mary &amp; John.</p>";
@@ -210,13 +223,15 @@ export function initializeRecordsPage(): void {
     clearRecordsButton,
     savedRecordsContainer,
     recordsFiltersForm,
-    filterSearchInput,
     filterIndividualSelect,
     filterStartDateInput,
     filterEndDateInput,
     filterConfidenceInput,
     filterConfidenceOutput,
     recordsTimeline,
+    workspaceSearchForm,
+    workspaceSearchInput,
+    workspaceSearchClear,
   } = elements;
 
   let latestState = getState();
@@ -228,6 +243,26 @@ export function initializeRecordsPage(): void {
   let pendingExtraction: number | null = null;
   let lastExtractionTimestamp: string | null = null;
   let currentFilters: RecordFilterCriteria = { ...DEFAULT_FILTERS };
+
+  const maybeSearchHandle = initializeWorkspaceSearch({
+    elements: {
+      form: workspaceSearchForm ?? undefined,
+      input: workspaceSearchInput,
+      clearButton: workspaceSearchClear ?? undefined,
+    },
+    onInput: () => {
+      applyFilters(readFiltersFromControls());
+    },
+    onSubmit: () => {
+      applyFilters(readFiltersFromControls());
+    },
+  });
+
+  if (!maybeSearchHandle) {
+    return;
+  }
+
+  const searchHandle = maybeSearchHandle;
 
   function buildExtractOptions(): ExtractOptions {
     return {
@@ -632,7 +667,7 @@ export function initializeRecordsPage(): void {
     const normalizedConfidence = Number.isFinite(rawConfidence) ? rawConfidence / 100 : 0;
 
     return {
-      search: filterSearchInput.value.trim(),
+      search: workspaceSearchInput.value.trim(),
       individualId: filterIndividualSelect.value,
       startDate: filterStartDateInput.value,
       endDate: filterEndDateInput.value,
@@ -684,6 +719,7 @@ export function initializeRecordsPage(): void {
   ): void {
     const recordCount = state.records.length;
     const individualCount = state.individuals.length;
+    workspaceSearchInput.disabled = recordCount === 0;
     const navRecordCount = document.getElementById("nav-record-count");
     const navIndividualCount = document.getElementById("nav-individual-count");
     const recordMetric = document.getElementById("metric-record-count");
@@ -721,7 +757,7 @@ export function initializeRecordsPage(): void {
       currentFilters = normalizedFilters;
     }
 
-    filterSearchInput.value = normalizedFilters.search;
+    searchHandle.setValue(normalizedFilters.search);
     filterStartDateInput.value = normalizedFilters.startDate;
     filterEndDateInput.value = normalizedFilters.endDate;
 
@@ -933,6 +969,7 @@ export function initializeRecordsPage(): void {
 
     if (button.dataset.action === "reset-filters") {
       recordsFiltersForm.reset();
+      searchHandle.setValue("");
       currentFilters = readFiltersFromControls();
       renderSavedRecords(latestState, currentFilters);
       return;
@@ -1044,6 +1081,13 @@ export function initializeRecordsPage(): void {
 
   saveModeNew.addEventListener("change", updateSavePanel);
   saveModeExisting.addEventListener("change", updateSavePanel);
+
+  recordsFiltersForm.addEventListener("reset", () => {
+    window.setTimeout(() => {
+      searchHandle.setValue("");
+      applyFilters(readFiltersFromControls());
+    }, 0);
+  });
 
   recordsFiltersForm.addEventListener("input", () => {
     applyFilters(readFiltersFromControls());
@@ -1165,13 +1209,15 @@ function getRecordsElements(): RecordsElements | null {
   const clearRecordsButton = document.getElementById("clear-records");
   const savedRecordsContainer = document.getElementById("saved-records");
   const recordsFiltersForm = document.getElementById("records-filters");
-  const filterSearchInput = document.getElementById("filter-search");
   const filterIndividualSelect = document.getElementById("filter-individual");
   const filterStartDateInput = document.getElementById("filter-start-date");
   const filterEndDateInput = document.getElementById("filter-end-date");
   const filterConfidenceInput = document.getElementById("filter-confidence");
   const filterConfidenceOutput = document.getElementById("filter-confidence-value");
   const recordsTimeline = document.getElementById("records-timeline");
+  const workspaceSearchForm = document.getElementById("workspace-search-form");
+  const workspaceSearchInput = document.getElementById("workspace-search");
+  const workspaceSearchClear = document.getElementById("workspace-search-clear");
 
   if (
     !(
@@ -1199,13 +1245,13 @@ function getRecordsElements(): RecordsElements | null {
       clearRecordsButton instanceof HTMLButtonElement &&
       savedRecordsContainer instanceof HTMLDivElement &&
       recordsFiltersForm instanceof HTMLFormElement &&
-      filterSearchInput instanceof HTMLInputElement &&
       filterIndividualSelect instanceof HTMLSelectElement &&
       filterStartDateInput instanceof HTMLInputElement &&
       filterEndDateInput instanceof HTMLInputElement &&
       filterConfidenceInput instanceof HTMLInputElement &&
       filterConfidenceOutput instanceof HTMLOutputElement &&
-      recordsTimeline instanceof HTMLDivElement
+      recordsTimeline instanceof HTMLDivElement &&
+      workspaceSearchInput instanceof HTMLInputElement
     )
   ) {
     return null;
@@ -1236,13 +1282,16 @@ function getRecordsElements(): RecordsElements | null {
     clearRecordsButton,
     savedRecordsContainer,
     recordsFiltersForm,
-    filterSearchInput,
     filterIndividualSelect,
     filterStartDateInput,
     filterEndDateInput,
     filterConfidenceInput,
     filterConfidenceOutput,
     recordsTimeline,
+    workspaceSearchForm: workspaceSearchForm instanceof HTMLFormElement ? workspaceSearchForm : null,
+    workspaceSearchInput,
+    workspaceSearchClear:
+      workspaceSearchClear instanceof HTMLButtonElement ? workspaceSearchClear : null,
   };
 }
 

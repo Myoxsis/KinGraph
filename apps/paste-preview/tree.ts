@@ -12,13 +12,16 @@ import {
   getLatestRecordForIndividual,
   normalizeNameKey,
 } from "./shared/utils";
+import { initializeWorkspaceSearch } from "./shared/search";
 import type { IndividualRecord } from "../../schema";
 
 interface TreeElements {
   container: HTMLDivElement;
   select: HTMLSelectElement;
-  searchInput: HTMLInputElement;
   clearButton: HTMLButtonElement;
+  workspaceSearchForm: HTMLFormElement | null;
+  workspaceSearchInput: HTMLInputElement;
+  workspaceSearchClear: HTMLButtonElement | null;
 }
 
 export function initializeTreePage(): void {
@@ -28,11 +31,45 @@ export function initializeTreePage(): void {
     return;
   }
 
-  const { container, select, searchInput, clearButton } = elements;
+  const {
+    container,
+    select,
+    clearButton,
+    workspaceSearchForm,
+    workspaceSearchInput,
+    workspaceSearchClear,
+  } = elements;
 
   let latestState = getState();
   let selectedTreeIndividualId: string | null = null;
   let treeSearchQuery = "";
+
+  const maybeSearchHandle = initializeWorkspaceSearch({
+    elements: {
+      form: workspaceSearchForm ?? undefined,
+      input: workspaceSearchInput,
+      clearButton: workspaceSearchClear ?? undefined,
+    },
+    onInput: (value) => {
+      treeSearchQuery = value.toLowerCase();
+      populateTreeOptions(latestState.individuals);
+    },
+    onSubmit: (value) => {
+      treeSearchQuery = value.toLowerCase();
+      populateTreeOptions(latestState.individuals);
+      if (select.value) {
+        renderTree();
+      }
+    },
+  });
+
+  if (!maybeSearchHandle) {
+    return;
+  }
+
+  const searchHandle = maybeSearchHandle;
+
+  treeSearchQuery = searchHandle.getValue().toLowerCase();
 
   function createTreePersonElement(
     name: string,
@@ -215,6 +252,14 @@ export function initializeTreePage(): void {
     rootLevel.appendChild(createTreeHeading("Individual"));
     const rootBranches = document.createElement("div");
     rootBranches.className = "genealogy-branches genealogy-branches--single";
+    const rootConnectors: Array<"up" | "down"> = [];
+    if (hasParents) {
+      rootConnectors.push("up");
+    }
+    if (hasChildren) {
+      rootConnectors.push("down");
+    }
+
     rootBranches.appendChild(
       createGenealogyBranch(
         createTreePersonElement(
@@ -222,10 +267,7 @@ export function initializeTreePage(): void {
           formatLifespan(mergedProfile),
           buildDetails(mergedProfile, true),
         ),
-        [
-          ...(hasParents ? ["up"] : []),
-          ...(hasChildren ? ["down"] : []),
-        ],
+        rootConnectors,
       ),
     );
     rootLevel.appendChild(rootBranches);
@@ -470,6 +512,7 @@ export function initializeTreePage(): void {
 
   function populateTreeOptions(individuals: StoredIndividual[]): void {
     const previousValue = select.value;
+    workspaceSearchInput.disabled = individuals.length === 0;
     const filtered = individuals
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -516,11 +559,6 @@ export function initializeTreePage(): void {
     }
   }
 
-  searchInput.addEventListener("input", () => {
-    treeSearchQuery = searchInput.value.trim().toLowerCase();
-    populateTreeOptions(latestState.individuals);
-  });
-
   select.addEventListener("change", () => {
     selectedTreeIndividualId = select.value || null;
     renderTree();
@@ -545,21 +583,31 @@ export function initializeTreePage(): void {
 function getTreeElements(): TreeElements | null {
   const container = document.getElementById("tree-container");
   const select = document.getElementById("tree-individual-select");
-  const searchInput = document.getElementById("tree-search");
   const clearButton = document.getElementById("tree-clear");
+  const workspaceSearchForm = document.getElementById("workspace-search-form");
+  const workspaceSearchInput = document.getElementById("workspace-search");
+  const workspaceSearchClear = document.getElementById("workspace-search-clear");
 
   if (
     !(
       container instanceof HTMLDivElement &&
       select instanceof HTMLSelectElement &&
-      searchInput instanceof HTMLInputElement &&
-      clearButton instanceof HTMLButtonElement
+      clearButton instanceof HTMLButtonElement &&
+      workspaceSearchInput instanceof HTMLInputElement
     )
   ) {
     return null;
   }
 
-  return { container, select, searchInput, clearButton };
+  return {
+    container,
+    select,
+    clearButton,
+    workspaceSearchForm: workspaceSearchForm instanceof HTMLFormElement ? workspaceSearchForm : null,
+    workspaceSearchInput,
+    workspaceSearchClear:
+      workspaceSearchClear instanceof HTMLButtonElement ? workspaceSearchClear : null,
+  };
 }
 
 function createGenealogyBranch(
