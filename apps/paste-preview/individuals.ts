@@ -103,8 +103,9 @@ interface IndividualsElements {
   editNotesInput: HTMLTextAreaElement;
   editSaveButton: HTMLButtonElement;
   editFeedback: HTMLSpanElement | null;
-  editEmptyState: HTMLParagraphElement | null;
-  clearSelectionButton: HTMLButtonElement | null;
+  editModal: HTMLDivElement;
+  editModalBackdrop: HTMLDivElement | null;
+  editModalClose: HTMLButtonElement;
   profileEditor: HTMLDivElement;
   profileFieldsContainer: HTMLDivElement;
   profileSaveButton: HTMLButtonElement;
@@ -860,8 +861,9 @@ export function initializeIndividualsPage(): void {
     editNotesInput,
     editSaveButton,
     editFeedback,
-    editEmptyState,
-    clearSelectionButton,
+    editModal,
+    editModalBackdrop,
+    editModalClose,
     profileEditor,
     profileFieldsContainer,
     profileSaveButton,
@@ -878,6 +880,7 @@ export function initializeIndividualsPage(): void {
   let profileDirty = false;
   let profileSaving = false;
   let individualSearchQuery = "";
+  let editModalOpen = false;
 
   const maybeSearchHandle = initializeWorkspaceSearch({
     elements: {
@@ -947,7 +950,20 @@ export function initializeIndividualsPage(): void {
       return;
     }
 
-    const fragment = document.createDocumentFragment();
+    const table = document.createElement("table");
+    table.className = "data-table";
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    for (const label of ["Name", "Linked records", "Updated", "Actions"]) {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = label;
+      headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
     const sortedIndividuals = [...latestState.individuals].sort((a, b) => a.name.localeCompare(b.name));
     const linkedRecordsByIndividual = new Map<string, StoredRecord[]>();
 
@@ -986,75 +1002,80 @@ export function initializeIndividualsPage(): void {
     }
 
     for (const individual of filteredIndividuals) {
-      const card = document.createElement("article");
-      card.className = "card";
-      card.dataset.individualId = individual.id;
-      card.tabIndex = 0;
-      card.setAttribute("role", "button");
-      card.setAttribute("aria-label", `Edit details for ${individual.name}`);
-      const isSelected = individual.id === selectedIndividualId;
-      card.setAttribute("aria-pressed", isSelected ? "true" : "false");
-      if (isSelected) {
-        card.classList.add("is-selected");
+      const row = document.createElement("tr");
+      row.dataset.individualId = individual.id;
+      if (individual.id === selectedIndividualId) {
+        row.classList.add("is-selected");
       }
 
-      const header = document.createElement("header");
-      const title = document.createElement("h3");
-      title.className = "card-title";
+      const nameCell = document.createElement("td");
+      const title = document.createElement("div");
+      title.className = "data-table-title";
       title.textContent = individual.name;
+      nameCell.appendChild(title);
 
-      const meta = document.createElement("span");
-      meta.className = "meta";
-      meta.textContent = `Updated ${formatTimestamp(individual.updatedAt)}`;
+      if (individual.notes.trim()) {
+        const notes = document.createElement("div");
+        notes.className = "data-table-subtext";
+        notes.textContent = individual.notes;
+        nameCell.appendChild(notes);
+      }
 
-      header.append(title, meta);
-      card.appendChild(header);
-
+      const linkedCell = document.createElement("td");
       const linkedRecords = linkedRecordsByIndividual.get(individual.id) ?? [];
-      const countLabel = document.createElement("p");
-      countLabel.className = "supporting-text";
-      countLabel.textContent = linkedRecords.length
+      const linkedSummary = document.createElement("div");
+      linkedSummary.className = "data-table-title";
+      linkedSummary.textContent = linkedRecords.length
         ? `${linkedRecords.length} linked record${linkedRecords.length === 1 ? "" : "s"}`
         : "No linked records yet.";
-      card.appendChild(countLabel);
+      linkedCell.appendChild(linkedSummary);
 
       if (linkedRecords.length) {
         const listElement = document.createElement("ul");
-        listElement.className = "inline-list";
+        listElement.className = "data-table-record-list";
+        const sortedRecords = [...linkedRecords].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        const visibleRecords = sortedRecords.slice(0, 3);
 
-        for (const stored of linkedRecords.sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
+        for (const stored of visibleRecords) {
           const item = document.createElement("li");
           const summary = stored.summary || "Saved record";
           item.textContent = `${summary} — saved ${formatTimestamp(stored.createdAt)}`;
           listElement.appendChild(item);
         }
 
-        card.appendChild(listElement);
+        if (sortedRecords.length > visibleRecords.length) {
+          const remaining = sortedRecords.length - visibleRecords.length;
+          const moreItem = document.createElement("li");
+          moreItem.className = "data-table-meta";
+          moreItem.textContent = `+${remaining} more linked record${remaining === 1 ? "" : "s"}`;
+          listElement.appendChild(moreItem);
+        }
+
+        linkedCell.appendChild(listElement);
       }
 
-      if (individual.notes.trim()) {
-        const notes = document.createElement("p");
-        notes.className = "supporting-text";
-        notes.textContent = `Notes: ${individual.notes}`;
-        card.appendChild(notes);
-      }
+      const updatedCell = document.createElement("td");
+      const updatedMeta = document.createElement("div");
+      updatedMeta.className = "data-table-meta";
+      updatedMeta.textContent = formatTimestamp(individual.updatedAt);
+      updatedCell.appendChild(updatedMeta);
 
-      const actions = document.createElement("div");
-      actions.className = "card-actions";
-
+      const actionsCell = document.createElement("td");
+      actionsCell.className = "data-table-actions";
       const editButton = document.createElement("button");
       editButton.type = "button";
-      editButton.textContent = "Edit details";
+      editButton.className = "table-action-button";
+      editButton.textContent = "Edit";
       editButton.dataset.action = "edit-individual";
       editButton.dataset.individualId = individual.id;
+      actionsCell.appendChild(editButton);
 
-      actions.appendChild(editButton);
-      card.appendChild(actions);
-
-      fragment.appendChild(card);
+      row.append(nameCell, linkedCell, updatedCell, actionsCell);
+      tbody.appendChild(row);
     }
 
-    list.replaceChildren(fragment);
+    table.appendChild(tbody);
+    list.replaceChildren(table);
   }
 
   function updateProfileSaveButtonState(): void {
@@ -1180,14 +1201,49 @@ export function initializeIndividualsPage(): void {
 
   function focusEditForm(): void {
     window.requestAnimationFrame(() => {
-      if (!editNameInput.disabled) {
+      if (editModalOpen && !editNameInput.disabled) {
         editNameInput.focus();
         editNameInput.select();
       }
     });
   }
 
-  function selectIndividual(individualId: string | null): void {
+  function openEditModal(individualId: string): void {
+    selectIndividual(individualId);
+    if (!getSelectedIndividual()) {
+      return;
+    }
+    if (!editModalOpen) {
+      editModal.hidden = false;
+      editModal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+      editModalOpen = true;
+    }
+    focusEditForm();
+  }
+
+  function closeEditModal(options?: { preserveSelection?: boolean }): void {
+    if (!editModalOpen) {
+      if (!options?.preserveSelection) {
+        selectIndividual(null, { suppressModalClose: true });
+      }
+      return;
+    }
+
+    editModal.hidden = true;
+    editModal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("modal-open");
+    editModalOpen = false;
+
+    if (!options?.preserveSelection) {
+      selectIndividual(null, { suppressModalClose: true });
+    }
+  }
+
+  function selectIndividual(
+    individualId: string | null,
+    options: { suppressModalClose?: boolean } = {},
+  ): void {
     let nextSelection: string | null = null;
 
     if (individualId) {
@@ -1195,7 +1251,8 @@ export function initializeIndividualsPage(): void {
       nextSelection = exists ? individualId : null;
     }
 
-    const changed = nextSelection !== selectedIndividualId;
+    const previousSelection = selectedIndividualId;
+    const changed = nextSelection !== previousSelection;
     selectedIndividualId = nextSelection;
 
     if (changed && editFeedback) {
@@ -1204,6 +1261,10 @@ export function initializeIndividualsPage(): void {
 
     renderIndividuals();
     renderSelectedIndividual();
+
+    if (!nextSelection && editModalOpen && !options.suppressModalClose) {
+      closeEditModal({ preserveSelection: true });
+    }
   }
 
   function renderSelectedIndividual(): void {
@@ -1213,21 +1274,11 @@ export function initializeIndividualsPage(): void {
     editNameInput.disabled = !hasSelection;
     editNotesInput.disabled = !hasSelection;
     editSaveButton.disabled = !hasSelection;
-    if (clearSelectionButton) {
-      clearSelectionButton.disabled = !hasSelection;
-    }
 
     if (!selected) {
-      if (editEmptyState) {
-        editEmptyState.hidden = false;
-      }
       editForm.reset();
       clearProfileEditor();
       return;
-    }
-
-    if (editEmptyState) {
-      editEmptyState.hidden = true;
     }
 
     editNameInput.value = selected.name;
@@ -1243,8 +1294,7 @@ export function initializeIndividualsPage(): void {
     }
 
     if (button.dataset.action === "edit-individual") {
-      selectIndividual(individualId);
-      focusEditForm();
+      openEditModal(individualId);
     }
   }
 
@@ -1254,29 +1304,6 @@ export function initializeIndividualsPage(): void {
 
     if (button) {
       handleIndividualAction(button);
-      return;
-    }
-
-    const card = target.closest<HTMLElement>("[data-individual-id]");
-
-    if (card?.dataset.individualId) {
-      selectIndividual(card.dataset.individualId);
-      focusEditForm();
-    }
-  });
-
-  list.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-
-    const target = event.target as HTMLElement;
-    const card = target.closest<HTMLElement>("[data-individual-id]");
-
-    if (card?.dataset.individualId) {
-      event.preventDefault();
-      selectIndividual(card.dataset.individualId);
-      focusEditForm();
     }
   });
 
@@ -1295,8 +1322,7 @@ export function initializeIndividualsPage(): void {
       if (createFeedback) {
         createFeedback.textContent = `Created individual ${individual.name}.`;
       }
-      selectIndividual(individual.id);
-      focusEditForm();
+      openEditModal(individual.id);
     } catch (error) {
       console.error("Failed to create individual", error);
       if (createFeedback) {
@@ -1399,19 +1425,28 @@ export function initializeIndividualsPage(): void {
     }
   });
 
-  if (clearSelectionButton) {
-    clearSelectionButton.addEventListener("click", () => {
-      selectIndividual(null);
-      if (editFeedback) {
-        editFeedback.textContent = "";
-      }
+  editModalClose.addEventListener("click", () => {
+    closeEditModal();
+  });
+
+  if (editModalBackdrop) {
+    editModalBackdrop.addEventListener("click", () => {
+      closeEditModal();
     });
   }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && editModalOpen) {
+      event.preventDefault();
+      closeEditModal();
+    }
+  });
 
   subscribe((state) => {
     latestState = state;
     if (selectedIndividualId && !state.individuals.some((item) => item.id === selectedIndividualId)) {
-      selectedIndividualId = null;
+      selectIndividual(null);
+      return;
     }
     renderIndividuals();
     renderSelectedIndividual();
@@ -1430,9 +1465,10 @@ function getIndividualsElements(): IndividualsElements | null {
   const editNameInput = document.getElementById("edit-individual-name");
   const editNotesInput = document.getElementById("edit-individual-notes");
   const editFeedback = document.getElementById("edit-individual-feedback");
-  const editEmptyState = document.getElementById("edit-individual-empty");
   const editSaveButton = document.getElementById("save-individual-button");
-  const clearSelectionButton = document.getElementById("clear-edit-selection");
+  const editModal = document.getElementById("individual-edit-modal");
+  const editModalBackdrop = document.getElementById("individual-edit-backdrop");
+  const editModalClose = document.getElementById("close-individual-modal");
   const profileEditor = document.getElementById("individual-profile-editor");
   const profileFieldsContainer = document.getElementById("individual-profile-fields");
   const profileSaveButton = document.getElementById("save-profile-button");
@@ -1451,6 +1487,8 @@ function getIndividualsElements(): IndividualsElements | null {
       editNameInput instanceof HTMLInputElement &&
       editNotesInput instanceof HTMLTextAreaElement &&
       editSaveButton instanceof HTMLButtonElement &&
+      editModal instanceof HTMLDivElement &&
+      editModalClose instanceof HTMLButtonElement &&
       profileEditor instanceof HTMLDivElement &&
       profileFieldsContainer instanceof HTMLDivElement &&
       profileSaveButton instanceof HTMLButtonElement &&
@@ -1470,8 +1508,9 @@ function getIndividualsElements(): IndividualsElements | null {
     editNotesInput,
     editSaveButton,
     editFeedback: editFeedback instanceof HTMLSpanElement ? editFeedback : null,
-    editEmptyState: editEmptyState instanceof HTMLParagraphElement ? editEmptyState : null,
-    clearSelectionButton: clearSelectionButton instanceof HTMLButtonElement ? clearSelectionButton : null,
+    editModal,
+    editModalBackdrop: editModalBackdrop instanceof HTMLDivElement ? editModalBackdrop : null,
+    editModalClose,
     profileEditor,
     profileFieldsContainer,
     profileSaveButton,
