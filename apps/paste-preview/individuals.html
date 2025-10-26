@@ -154,31 +154,35 @@
               Review and manage the individuals linked to your extracted records.
             </p>
 
-            <section class="view secondary-grid">
-        <section class="panel">
-          <header>
-            <h2>Individuals</h2>
-          </header>
-          <div class="table-wrapper">
-            <div id="individuals-list" class="individuals-list"></div>
-          </div>
-        </section>
-        <section class="panel">
-          <header>
-            <h2>Create individual</h2>
-          </header>
-          <form id="create-individual-form" class="choice">
-            <div class="control">
-              <label for="create-individual-name">Display name</label>
-              <input type="text" id="create-individual-name" required />
+            <div class="workspace-grid">
+              <section class="workspace-primary" aria-label="Individuals">
+                <section class="workspace-section workspace-section--layer">
+                  <header>
+                    <h2>Individuals</h2>
+                  </header>
+                  <div class="table-wrapper">
+                    <div id="individuals-list" class="individuals-list"></div>
+                  </div>
+                </section>
+              </section>
+              <section class="workspace-secondary" aria-label="Create individual">
+                <section class="workspace-section workspace-section--layer">
+                  <header>
+                    <h2>Create individual</h2>
+                  </header>
+                  <form id="create-individual-form" class="choice">
+                    <div class="control">
+                      <label for="create-individual-name">Display name</label>
+                      <input type="text" id="create-individual-name" required />
+                    </div>
+                    <div class="card-actions">
+                      <button type="submit">Create</button>
+                      <span id="individuals-feedback" class="supporting-text" aria-live="polite"></span>
+                    </div>
+                  </form>
+                </section>
+              </section>
             </div>
-            <div class="card-actions">
-              <button type="submit">Create</button>
-              <span id="individuals-feedback" class="supporting-text" aria-live="polite"></span>
-            </div>
-          </form>
-        </section>
-            </section>
           </section>
         </main>
       </div>
