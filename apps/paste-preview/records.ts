@@ -1137,7 +1137,7 @@ export function initializeRecordsPage(): void {
 
     let individualId: string | null = null;
     let individualName = "";
-    let saveAsUnlinked = false;
+    let createdNewIndividual = false;
 
     if (isProcessingImportQueue) {
       const [topCandidate] = buildMatchCandidates(
@@ -1149,8 +1149,6 @@ export function initializeRecordsPage(): void {
       if (topCandidate && topCandidate.score >= AUTO_MATCH_THRESHOLD) {
         individualId = topCandidate.individual.id;
         individualName = topCandidate.individual.name;
-      } else {
-        saveAsUnlinked = true;
       }
     } else if (saveModeExisting.checked && !saveModeExisting.disabled) {
       const selected = existingIndividualSelect.value;
@@ -1162,7 +1160,7 @@ export function initializeRecordsPage(): void {
       }
     }
 
-    if (!saveAsUnlinked && !individualId) {
+    if (!individualId) {
       const providedName = newIndividualInput.value.trim();
       const preferredName = providedName || suggestedName || getSuggestedIndividualName(currentRecord);
       const fallbackName = preferredName || `Imported individual ${rowIndex}`;
@@ -1171,11 +1169,12 @@ export function initializeRecordsPage(): void {
       individualName = individual.name;
       newIndividualInput.value = "";
       latestState = getState();
+      createdNewIndividual = true;
     }
 
-    const resolvedIndividualId = saveAsUnlinked ? "" : individualId ?? "";
+    const resolvedIndividualId = individualId ?? "";
 
-    if (!saveAsUnlinked && !resolvedIndividualId) {
+    if (!resolvedIndividualId) {
       throw new Error("Unable to determine individual for import.");
     }
 
@@ -1183,17 +1182,16 @@ export function initializeRecordsPage(): void {
     await createRecord({ individualId: resolvedIndividualId, summary, record: currentRecord });
     latestState = getState();
 
-    if (!saveAsUnlinked) {
-      if (saveModeNew.checked) {
-        saveModeExisting.checked = true;
-        saveModeNew.checked = false;
-      }
+    if (saveModeNew.checked) {
+      saveModeExisting.checked = true;
+      saveModeNew.checked = false;
+    }
 
-      existingIndividualSelect.value = resolvedIndividualId;
-      setFeedback(`Saved CSV row ${rowIndex} for ${individualName}.`);
+    existingIndividualSelect.value = resolvedIndividualId;
+    if (createdNewIndividual) {
+      setFeedback(`Created individual ${individualName} and saved CSV row ${rowIndex}.`);
     } else {
-      existingIndividualSelect.value = "";
-      setFeedback(`Saved CSV row ${rowIndex} as an unlinked record.`);
+      setFeedback(`Saved CSV row ${rowIndex} for ${individualName}.`);
     }
 
     updateSavePanel();
