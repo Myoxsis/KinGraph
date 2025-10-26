@@ -71,41 +71,134 @@ export function initializeTreePage(): void {
 
   treeSearchQuery = searchHandle.getValue().toLowerCase();
 
+  type TreePersonRelationship = "focus" | "parent" | "child";
+
+  interface TreePersonOptions {
+    relationship?: TreePersonRelationship;
+    sex?: IndividualProfile["sex"] | null;
+  }
+
   function createTreePersonElement(
     name: string,
     lifespan: string,
     details: string[],
     note?: string,
+    options: TreePersonOptions = {},
   ): HTMLElement {
-    const wrapper = document.createElement("div");
-    wrapper.className = "tree-person";
+    const classes = ["tree-person"];
+
+    if (options.relationship) {
+      classes.push(`tree-person--${options.relationship}`);
+    }
+
+    const sexClass = getSexClass(options.sex ?? null);
+    if (sexClass) {
+      classes.push(`tree-person--${sexClass}`);
+    }
+
+    const wrapper = document.createElement("article");
+    wrapper.className = classes.join(" ");
+
+    const header = document.createElement("header");
+    header.className = "tree-person-header";
+
+    const primary = document.createElement("div");
+    primary.className = "tree-person-primary";
+
+    const avatar = document.createElement("span");
+    avatar.className = "tree-person-avatar";
+    avatar.textContent = getAvatarInitial(name);
+    avatar.setAttribute("aria-hidden", "true");
+    primary.appendChild(avatar);
+
+    const identity = document.createElement("div");
+    identity.className = "tree-person-identity";
 
     const title = document.createElement("strong");
     title.textContent = name || "Unnamed individual";
-    wrapper.appendChild(title);
+    identity.appendChild(title);
 
     if (lifespan) {
       const span = document.createElement("span");
       span.className = "tree-lifespan";
       span.textContent = lifespan;
-      wrapper.appendChild(span);
+      identity.appendChild(span);
     }
 
-    for (const detail of details) {
-      const info = document.createElement("span");
-      info.className = "tree-notes";
-      info.textContent = detail;
-      wrapper.appendChild(info);
+    primary.appendChild(identity);
+    header.appendChild(primary);
+
+    const relationshipLabel = options.relationship
+      ? getRelationshipLabel(options.relationship)
+      : null;
+
+    if (relationshipLabel) {
+      const role = document.createElement("span");
+      role.className = "tree-person-role";
+      role.textContent = relationshipLabel;
+      header.appendChild(role);
     }
 
-    if (note) {
-      const info = document.createElement("span");
-      info.className = "tree-notes";
-      info.textContent = note;
-      wrapper.appendChild(info);
+    wrapper.appendChild(header);
+
+    if (details.length || note) {
+      const detailsWrapper = document.createElement("div");
+      detailsWrapper.className = "tree-person-details";
+
+      for (const detail of details) {
+        const info = document.createElement("span");
+        info.className = "tree-notes";
+        info.textContent = detail;
+        detailsWrapper.appendChild(info);
+      }
+
+      if (note) {
+        const info = document.createElement("span");
+        info.className = "tree-notes";
+        info.textContent = note;
+        detailsWrapper.appendChild(info);
+      }
+
+      wrapper.appendChild(detailsWrapper);
     }
 
     return wrapper;
+  }
+
+  function getSexClass(sex: IndividualProfile["sex"] | null): string | null {
+    if (sex === "M") {
+      return "male";
+    }
+    if (sex === "F") {
+      return "female";
+    }
+    if (sex === "U") {
+      return "unknown";
+    }
+    return null;
+  }
+
+  function getAvatarInitial(name: string): string {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return "?";
+    }
+
+    const match = trimmed.match(/^[\p{L}\p{N}]/u);
+    return match ? match[0].toUpperCase() : trimmed[0].toUpperCase();
+  }
+
+  function getRelationshipLabel(relationship: TreePersonRelationship): string {
+    switch (relationship) {
+      case "focus":
+        return "Focus";
+      case "parent":
+        return "Parent";
+      case "child":
+        return "Child";
+      default:
+        return "";
+    }
   }
 
   function renderTree(): void {
@@ -222,6 +315,11 @@ export function initializeTreePage(): void {
               fatherName,
               fatherProfile ? formatLifespan(fatherProfile) : "",
               buildDetails(fatherProfile),
+              undefined,
+              {
+                relationship: "parent",
+                sex: fatherProfile?.sex ?? "M",
+              },
             ),
             ["down"],
           ),
@@ -236,6 +334,11 @@ export function initializeTreePage(): void {
               motherName,
               motherProfile ? formatLifespan(motherProfile) : "",
               buildDetails(motherProfile),
+              undefined,
+              {
+                relationship: "parent",
+                sex: motherProfile?.sex ?? "F",
+              },
             ),
             ["down"],
           ),
@@ -266,6 +369,11 @@ export function initializeTreePage(): void {
           individual.name,
           formatLifespan(mergedProfile),
           buildDetails(mergedProfile, true),
+          undefined,
+          {
+            relationship: "focus",
+            sex: mergedProfile.sex ?? null,
+          },
         ),
         rootConnectors,
       ),
@@ -289,6 +397,11 @@ export function initializeTreePage(): void {
               childName,
               childProfile ? formatLifespan(childProfile) : "",
               buildDetails(childProfile),
+              undefined,
+              {
+                relationship: "child",
+                sex: childProfile?.sex ?? null,
+              },
             ),
             ["up"],
           ),
