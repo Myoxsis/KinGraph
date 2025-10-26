@@ -1,5 +1,5 @@
-import { highlight } from "../highlight";
-import type { IndividualRecord } from "../schema";
+import { highlight } from "../../highlight";
+import type { IndividualRecord } from "../../schema";
 
 export type DateFragment = IndividualRecord["birth"];
 
