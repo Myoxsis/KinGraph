@@ -9,6 +9,7 @@ import {
   getState,
   subscribe,
   type StoredIndividual,
+  type StoredRecord,
 } from "@/storage";
 import {
   buildHighlightDocument,
@@ -59,6 +60,14 @@ interface RecordsElements {
   saveFeedback: HTMLSpanElement;
   clearRecordsButton: HTMLButtonElement;
   savedRecordsContainer: HTMLDivElement;
+  recordsFiltersForm: HTMLFormElement;
+  filterSearchInput: HTMLInputElement;
+  filterIndividualSelect: HTMLSelectElement;
+  filterStartDateInput: HTMLInputElement;
+  filterEndDateInput: HTMLInputElement;
+  filterConfidenceInput: HTMLInputElement;
+  filterConfidenceOutput: HTMLOutputElement;
+  recordsTimeline: HTMLDivElement;
 }
 
 const DEFAULT_HTML = "<h1>Jane Doe</h1><p>Born about 1892 to Mary &amp; John.</p>";
@@ -83,6 +92,73 @@ const SAMPLE_SNIPPETS: SampleSnippet[] = [
       '<div class="obituary"><h3>Obituary</h3><p><strong>Mrs. Sarah Ann Morris</strong>, aged 67, died 12 Oct 1914 in Denver. Survived by sons James and Robert, daughters Helen (Peters) and Clara (Wells).</p></div>',
   },
 ];
+
+function getTopConfidence(record: IndividualRecord): { field: string; value: number } | null {
+  const scores = scoreConfidence(record);
+  let best: { field: string; value: number } | null = null;
+
+  for (const [field, value] of Object.entries(scores)) {
+    if (typeof value !== "number") {
+      continue;
+    }
+
+    if (!best || value > best.value) {
+      best = { field, value };
+    }
+  }
+
+  return best;
+}
+
+function getConfidenceLevel(value: number | null): "high" | "medium" | "low" | "unknown" {
+  if (value === null) {
+    return "unknown";
+  }
+
+  if (value >= 0.8) {
+    return "high";
+  }
+
+  if (value >= 0.55) {
+    return "medium";
+  }
+
+  return "low";
+}
+
+function getConfidenceText(entry: { field: string; value: number } | null): string {
+  if (!entry) {
+    return "No confidence data";
+  }
+
+  const percent = Math.round(entry.value * 100);
+  const label = CONFIDENCE_LABELS[entry.field] ?? entry.field;
+  return `${percent}% • ${label}`;
+}
+
+function formatConfidenceOutput(value: number): string {
+  return `≥ ${Math.round(value * 100)}%`;
+}
+
+function determineDateBucket(records: StoredRecord[]): "day" | "week" {
+  if (records.length < 2) {
+    return "day";
+  }
+
+  const timestamps = records
+    .map((record) => new Date(record.createdAt).getTime())
+    .filter((time) => Number.isFinite(time));
+
+  if (timestamps.length < 2) {
+    return "day";
+  }
+
+  const earliest = Math.min(...timestamps);
+  const latest = Math.max(...timestamps);
+  const diffDays = Math.abs(latest - earliest) / (1000 * 60 * 60 * 24);
+
+  return diffDays > 14 ? "week" : "day";
+}
 
 export function initializeRecordsPage(): void {
   const elements = getRecordsElements();
@@ -115,6 +191,14 @@ export function initializeRecordsPage(): void {
     saveFeedback,
     clearRecordsButton,
     savedRecordsContainer,
+    recordsFiltersForm,
+    filterSearchInput,
+    filterIndividualSelect,
+    filterStartDateInput,
+    filterEndDateInput,
+    filterConfidenceInput,
+    filterConfidenceOutput,
+    recordsTimeline,
   } = elements;
 
   let latestState = getState();
@@ -384,6 +468,31 @@ export function initializeRecordsPage(): void {
     }
   }
 
+  function getIndividualLabel(individual: StoredIndividual): string {
+    let label = individual.name;
+    const latestRecord = getLatestRecordForIndividual(individual.id, latestState.records);
+
+    if (latestRecord) {
+      const birthDate = formatDate(latestRecord.record.birth);
+      const deathDate = formatDate(latestRecord.record.death);
+      const details: string[] = [];
+
+      if (birthDate) {
+        details.push(`b. ${birthDate}`);
+      }
+
+      if (deathDate) {
+        details.push(`d. ${deathDate}`);
+      }
+
+      if (details.length) {
+        label = `${individual.name} (${details.join(" – ")})`;
+      }
+    }
+
+    return label;
+  }
+
   function populateExistingIndividuals(individuals: StoredIndividual[]): void {
     const previousValue = existingIndividualSelect.value;
     existingIndividualSelect.replaceChildren();
@@ -405,37 +514,116 @@ export function initializeRecordsPage(): void {
     for (const individual of sorted) {
       const option = document.createElement("option");
       option.value = individual.id;
-      let label = individual.name;
+      option.textContent = getIndividualLabel(individual);
 
-      const latestRecord = getLatestRecordForIndividual(individual.id, latestState.records);
-      if (latestRecord) {
-        const birthDate = formatDate(latestRecord.record.birth);
-        const deathDate = formatDate(latestRecord.record.death);
-        const details: string[] = [];
-
-        if (birthDate) {
-          details.push(`b. ${birthDate}`);
-        }
-
-        if (deathDate) {
-          details.push(`d. ${deathDate}`);
-        }
-
-        if (details.length) {
-          label = `${individual.name} (${details.join(" – ")})`;
-        }
-      }
-
-      option.textContent = label;
       if (individual.id === previousValue) {
         option.selected = true;
       }
+
       existingIndividualSelect.appendChild(option);
     }
 
     if (previousValue && existingIndividualSelect.value !== previousValue) {
       existingIndividualSelect.value = previousValue;
     }
+  }
+
+  function populateFilterOptions(
+    individuals: StoredIndividual[],
+    filters: RecordFilterCriteria,
+  ): string {
+    const desiredValue = filters.individualId;
+    const sorted = [...individuals].sort((a, b) => a.name.localeCompare(b.name));
+    const availableValues = new Set<string>();
+
+    filterIndividualSelect.replaceChildren();
+
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "All individuals";
+    filterIndividualSelect.appendChild(allOption);
+    availableValues.add(allOption.value);
+
+    const unlinkedOption = document.createElement("option");
+    unlinkedOption.value = UNLINKED_FILTER_VALUE;
+    unlinkedOption.textContent = "Unlinked records";
+    filterIndividualSelect.appendChild(unlinkedOption);
+    availableValues.add(unlinkedOption.value);
+
+    for (const individual of sorted) {
+      const option = document.createElement("option");
+      option.value = individual.id;
+      option.textContent = getIndividualLabel(individual);
+      filterIndividualSelect.appendChild(option);
+      availableValues.add(option.value);
+    }
+
+    let nextValue = desiredValue;
+    if (!availableValues.has(nextValue)) {
+      nextValue = "";
+    }
+
+    filterIndividualSelect.value = nextValue;
+    return nextValue;
+  }
+
+  function createEmptyStateElement(state: "empty" | "no-matches"): HTMLElement {
+    const container = document.createElement("div");
+    container.className = "empty-state empty-state--records";
+    container.dataset.state = state;
+
+    const illustration = document.createElement("div");
+    illustration.className = "empty-state-illustration";
+    illustration.setAttribute("aria-hidden", "true");
+
+    const title = document.createElement("p");
+    title.className = "empty-state-title";
+
+    const description = document.createElement("p");
+    description.className = "empty-state-description";
+
+    container.append(illustration, title, description);
+
+    if (state === "empty") {
+      title.textContent = "No records saved yet";
+      description.textContent = "Extract a record and press \"Save record\" to build your timeline.";
+
+      const cta = document.createElement("a");
+      cta.className = "button-secondary";
+      cta.href = "#html-input";
+      cta.textContent = "Import HTML";
+      container.append(cta);
+    } else {
+      title.textContent = "No matches found";
+      description.textContent = "Adjust your filters to see more saved records.";
+
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.className = "button-secondary";
+      reset.dataset.action = "reset-filters";
+      reset.textContent = "Clear filters";
+      container.append(reset);
+    }
+
+    return container;
+  }
+
+  function readFiltersFromControls(): RecordFilterCriteria {
+    const rawConfidence = Number(filterConfidenceInput.value);
+    const normalizedConfidence = Number.isFinite(rawConfidence) ? rawConfidence / 100 : 0;
+
+    return {
+      search: filterSearchInput.value.trim(),
+      individualId: filterIndividualSelect.value,
+      startDate: filterStartDateInput.value,
+      endDate: filterEndDateInput.value,
+      minConfidence: Math.min(1, Math.max(0, normalizedConfidence)),
+    };
+  }
+
+  function applyFilters(next: RecordFilterCriteria): void {
+    currentFilters = next;
+    renderSavedRecords(latestState, currentFilters);
   }
 
   function updateSavePanel(): void {
@@ -471,7 +659,10 @@ export function initializeRecordsPage(): void {
     populateExistingIndividuals(latestState.individuals);
   }
 
-  function renderSavedRecords(state: ReturnType<typeof getState>): void {
+  function renderSavedRecords(
+    state: ReturnType<typeof getState>,
+    filters: RecordFilterCriteria,
+  ): void {
     const recordCount = state.records.length;
     const individualCount = state.individuals.length;
     const navRecordCount = document.getElementById("nav-record-count");
@@ -490,64 +681,57 @@ export function initializeRecordsPage(): void {
       recordMetric.textContent = recordCount.toString();
     }
 
-    if (!state.records.length) {
-      const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = "No records saved yet. Extract a record and press \"Save record\" to store it.";
-      savedRecordsContainer.replaceChildren(empty);
+    const commandBar = document.querySelector<HTMLElement>(".command-bar");
+    const individualMap = new Map(state.individuals.map((individual) => [individual.id, individual]));
+    const unlinkedCount = countUnlinkedRecords(state.records, individualMap);
+
+    if (!recordCount) {
+      recordsTimeline.replaceChildren(createEmptyStateElement("empty"));
+      updateCommandBarSummary(commandBar, {
+        total: 0,
+        filtered: 0,
+        unlinked: 0,
+      });
       return;
     }
 
-    const fragment = document.createDocumentFragment();
-    const records = [...state.records].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const normalizedIndividualId = populateFilterOptions(state.individuals, filters);
+    const normalizedFilters: RecordFilterCriteria = { ...filters, individualId: normalizedIndividualId };
 
-    for (const stored of records) {
-      const individual = state.individuals.find((item) => item.id === stored.individualId);
-      const card = document.createElement("article");
-      card.className = "card";
-
-      const header = document.createElement("header");
-      const title = document.createElement("h3");
-      title.className = "card-title";
-      title.textContent = stored.summary || "Saved record";
-
-      const meta = document.createElement("span");
-      meta.className = "meta";
-      meta.textContent = `Saved ${formatTimestamp(stored.createdAt)}`;
-
-      header.append(title, meta);
-      card.appendChild(header);
-
-      const linkInfo = document.createElement("p");
-      linkInfo.className = "supporting-text";
-      linkInfo.textContent = individual
-        ? `Linked to ${individual.name}`
-        : "Linked individual not found";
-      card.appendChild(linkInfo);
-
-      const actions = document.createElement("div");
-      actions.className = "card-actions";
-
-      const loadButton = document.createElement("button");
-      loadButton.type = "button";
-      loadButton.textContent = "Load in extractor";
-      loadButton.dataset.action = "load-record";
-      loadButton.dataset.recordId = stored.id;
-
-      const deleteButton = document.createElement("button");
-      deleteButton.type = "button";
-      deleteButton.textContent = "Remove";
-      deleteButton.className = "button-secondary";
-      deleteButton.dataset.action = "delete-record";
-      deleteButton.dataset.recordId = stored.id;
-
-      actions.append(loadButton, deleteButton);
-      card.appendChild(actions);
-
-      fragment.appendChild(card);
+    if (filters === currentFilters && normalizedIndividualId !== filters.individualId) {
+      currentFilters = normalizedFilters;
     }
 
-    savedRecordsContainer.replaceChildren(fragment);
+    filterSearchInput.value = normalizedFilters.search;
+    filterStartDateInput.value = normalizedFilters.startDate;
+    filterEndDateInput.value = normalizedFilters.endDate;
+
+    const sliderValue = Math.round(normalizedFilters.minConfidence * 100);
+    filterConfidenceInput.value = sliderValue.toString();
+    filterConfidenceOutput.textContent = formatConfidenceOutput(normalizedFilters.minConfidence);
+
+    const { records: filteredRecords, topConfidence } = filterRecordsByCriteria(
+      state.records,
+      individualMap,
+      normalizedFilters,
+    );
+
+    updateCommandBarSummary(commandBar, {
+      total: recordCount,
+      filtered: filteredRecords.length,
+      unlinked: unlinkedCount,
+    });
+
+    if (!filteredRecords.length) {
+      recordsTimeline.replaceChildren(createEmptyStateElement("no-matches"));
+      return;
+    }
+
+    const bucket = determineDateBucket(filteredRecords);
+    const groups = groupRecordsByDate(filteredRecords, bucket);
+    const fragment = buildTimelineFragment(groups, individualMap, topConfidence);
+
+    recordsTimeline.replaceChildren(fragment);
   }
 
   function resetOutputs(): void {
@@ -728,6 +912,11 @@ export function initializeRecordsPage(): void {
       return;
     }
 
+    if (button.dataset.action === "reset-filters") {
+      recordsFiltersForm.reset();
+      return;
+    }
+
     const recordId = button.dataset.recordId;
 
     if (!recordId) {
@@ -899,7 +1088,7 @@ export function initializeRecordsPage(): void {
 
   subscribe((state) => {
     latestState = state;
-    renderSavedRecords(state);
+    renderSavedRecords(state, currentFilters);
     updateSavePanel();
   });
 
@@ -943,6 +1132,14 @@ function getRecordsElements(): RecordsElements | null {
   const saveFeedback = document.getElementById("save-feedback");
   const clearRecordsButton = document.getElementById("clear-records");
   const savedRecordsContainer = document.getElementById("saved-records");
+  const recordsFiltersForm = document.getElementById("records-filters");
+  const filterSearchInput = document.getElementById("filter-search");
+  const filterIndividualSelect = document.getElementById("filter-individual");
+  const filterStartDateInput = document.getElementById("filter-start-date");
+  const filterEndDateInput = document.getElementById("filter-end-date");
+  const filterConfidenceInput = document.getElementById("filter-confidence");
+  const filterConfidenceOutput = document.getElementById("filter-confidence-value");
+  const recordsTimeline = document.getElementById("records-timeline");
 
   if (
     !(
@@ -968,7 +1165,15 @@ function getRecordsElements(): RecordsElements | null {
       saveButton instanceof HTMLButtonElement &&
       saveFeedback instanceof HTMLSpanElement &&
       clearRecordsButton instanceof HTMLButtonElement &&
-      savedRecordsContainer instanceof HTMLDivElement
+      savedRecordsContainer instanceof HTMLDivElement &&
+      recordsFiltersForm instanceof HTMLFormElement &&
+      filterSearchInput instanceof HTMLInputElement &&
+      filterIndividualSelect instanceof HTMLSelectElement &&
+      filterStartDateInput instanceof HTMLInputElement &&
+      filterEndDateInput instanceof HTMLInputElement &&
+      filterConfidenceInput instanceof HTMLInputElement &&
+      filterConfidenceOutput instanceof HTMLOutputElement &&
+      recordsTimeline instanceof HTMLDivElement
     )
   ) {
     return null;
@@ -998,5 +1203,260 @@ function getRecordsElements(): RecordsElements | null {
     saveFeedback,
     clearRecordsButton,
     savedRecordsContainer,
+    recordsFiltersForm,
+    filterSearchInput,
+    filterIndividualSelect,
+    filterStartDateInput,
+    filterEndDateInput,
+    filterConfidenceInput,
+    filterConfidenceOutput,
+    recordsTimeline,
   };
+}
+
+interface TimelineGroup {
+  id: string;
+  bucket: "day" | "week";
+  start: Date | null;
+  records: StoredRecord[];
+}
+
+interface CommandBarSummary {
+  total: number;
+  filtered: number;
+  unlinked: number;
+}
+
+interface FilteredRecordsResult {
+  records: StoredRecord[];
+  topConfidence: Map<string, { field: string; value: number } | null>;
+}
+
+function startOfDay(date: Date): Date {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+function startOfWeek(date: Date): Date {
+  const result = startOfDay(date);
+  const day = result.getDay();
+  const diff = (day + 6) % 7;
+  result.setDate(result.getDate() - diff);
+  return result;
+}
+
+function groupRecordsByDate(
+  records: StoredRecord[],
+  bucket: "day" | "week" = "day",
+): TimelineGroup[] {
+  if (!records.length) {
+    return [];
+  }
+
+  const groups = new Map<string, TimelineGroup>();
+  const sorted = [...records].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  for (const record of sorted) {
+    const createdAt = new Date(record.createdAt);
+    const isValidDate = !Number.isNaN(createdAt.getTime());
+    const start = isValidDate ? (bucket === "week" ? startOfWeek(createdAt) : startOfDay(createdAt)) : null;
+    const key = isValidDate ? `${bucket}:${start?.toISOString() ?? record.createdAt}` : "unknown";
+
+    let group = groups.get(key);
+
+    if (!group) {
+      group = {
+        id: key,
+        bucket,
+        start,
+        records: [],
+      };
+      groups.set(key, group);
+    }
+
+    group.records.push(record);
+  }
+
+  return Array.from(groups.values()).sort((a, b) => {
+    const aTime = a.start ? a.start.getTime() : Number.NEGATIVE_INFINITY;
+    const bTime = b.start ? b.start.getTime() : Number.NEGATIVE_INFINITY;
+    return bTime - aTime;
+  });
+}
+
+function updateCommandBarSummary(commandBar: HTMLElement | null, summary: CommandBarSummary): void {
+  if (!commandBar) {
+    return;
+  }
+
+  commandBar.dataset.recordsTotal = summary.total.toString();
+  commandBar.dataset.recordsFiltered = summary.filtered.toString();
+  commandBar.dataset.recordsUnlinked = summary.unlinked.toString();
+}
+
+function countUnlinkedRecords(
+  records: StoredRecord[],
+  individualMap: Map<string, StoredIndividual>,
+): number {
+  return records.reduce((total, record) => total + (individualMap.has(record.individualId) ? 0 : 1), 0);
+}
+
+function filterRecordsByCriteria(
+  records: StoredRecord[],
+  individualMap: Map<string, StoredIndividual>,
+  filters: RecordFilterCriteria,
+): FilteredRecordsResult {
+  const filtered: StoredRecord[] = [];
+  const topConfidence = new Map<string, { field: string; value: number } | null>();
+  const searchTerm = filters.search.trim().toLowerCase();
+  const minConfidence = Math.min(1, Math.max(0, filters.minConfidence));
+  const startTime = filters.startDate ? Date.parse(`${filters.startDate}T00:00:00Z`) : Number.NaN;
+  const endTime = filters.endDate ? Date.parse(`${filters.endDate}T23:59:59Z`) : Number.NaN;
+
+  for (const record of records) {
+    const linkedIndividual = individualMap.get(record.individualId) ?? null;
+
+    if (filters.individualId === UNLINKED_FILTER_VALUE) {
+      if (linkedIndividual) {
+        continue;
+      }
+    } else if (filters.individualId && record.individualId !== filters.individualId) {
+      continue;
+    }
+
+    const confidenceEntry = getTopConfidence(record.record);
+    const confidenceValue = confidenceEntry ? confidenceEntry.value : 0;
+
+    if (confidenceValue < minConfidence) {
+      continue;
+    }
+
+    const createdAtTime = Date.parse(record.createdAt);
+
+    if (!Number.isNaN(startTime) && !Number.isNaN(createdAtTime) && createdAtTime < startTime) {
+      continue;
+    }
+
+    if (!Number.isNaN(endTime) && !Number.isNaN(createdAtTime) && createdAtTime > endTime) {
+      continue;
+    }
+
+    if (searchTerm) {
+      const haystack = [
+        record.summary,
+        record.record.givenNames.join(" "),
+        record.record.surname ?? "",
+        record.record.sourceUrl ?? "",
+        linkedIndividual?.name ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      if (!haystack.includes(searchTerm)) {
+        continue;
+      }
+    }
+
+    filtered.push(record);
+    topConfidence.set(record.id, confidenceEntry);
+  }
+
+  filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  return { records: filtered, topConfidence };
+}
+
+function buildTimelineFragment(
+  groups: TimelineGroup[],
+  individualMap: Map<string, StoredIndividual>,
+  topConfidence: Map<string, { field: string; value: number } | null>,
+): DocumentFragment {
+  const fragment = document.createDocumentFragment();
+
+  for (const group of groups) {
+    const groupElement = document.createElement("section");
+    groupElement.className = "timeline-group";
+    groupElement.dataset.bucket = group.bucket;
+
+    const header = document.createElement("header");
+    header.className = "timeline-group-header";
+
+    const heading = document.createElement("h3");
+    heading.className = "timeline-group-title";
+    if (group.start) {
+      const label =
+        group.bucket === "week"
+          ? `Week of ${formatTimestamp(group.start.toISOString())}`
+          : formatTimestamp(group.start.toISOString());
+      heading.textContent = label;
+    } else {
+      heading.textContent = "Unknown date";
+    }
+
+    const count = document.createElement("span");
+    count.className = "timeline-group-count";
+    count.textContent = `${group.records.length} record${group.records.length === 1 ? "" : "s"}`;
+
+    header.append(heading, count);
+
+    const body = document.createElement("div");
+    body.className = "timeline-group-body";
+
+    for (const stored of group.records) {
+      const individual = individualMap.get(stored.individualId) ?? null;
+      const row = document.createElement("article");
+      row.className = "record-row";
+
+      const content = document.createElement("div");
+      content.className = "record-content";
+
+      const title = document.createElement("p");
+      title.className = "record-title";
+      title.textContent = stored.summary || "Saved record";
+
+      const meta = document.createElement("div");
+      meta.className = "record-meta";
+
+      const timestamp = document.createElement("span");
+      timestamp.textContent = `Saved ${formatTimestamp(stored.createdAt)}`;
+
+      const linkInfo = document.createElement("span");
+      linkInfo.textContent = individual ? `Linked to ${individual.name}` : "Unlinked record";
+
+      const confidence = document.createElement("span");
+      confidence.className = "confidence-badge";
+      const confidenceEntry = topConfidence.get(stored.id) ?? null;
+      confidence.textContent = getConfidenceText(confidenceEntry);
+      confidence.dataset.level = getConfidenceLevel(confidenceEntry ? confidenceEntry.value : null);
+
+      meta.append(timestamp, linkInfo, confidence);
+      content.append(title, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "record-actions";
+
+      const loadButton = document.createElement("button");
+      loadButton.type = "button";
+      loadButton.textContent = "Load in extractor";
+      loadButton.dataset.action = "load-record";
+      loadButton.dataset.recordId = stored.id;
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.textContent = "Remove";
+      deleteButton.className = "button-secondary";
+      deleteButton.dataset.action = "delete-record";
+      deleteButton.dataset.recordId = stored.id;
+
+      actions.append(loadButton, deleteButton);
+      row.append(content, actions);
+      body.appendChild(row);
+    }
+
+    groupElement.append(header, body);
+    fragment.appendChild(groupElement);
+  }
+
+  return fragment;
 }

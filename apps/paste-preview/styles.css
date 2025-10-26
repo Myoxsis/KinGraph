@@ -716,6 +716,239 @@ button:hover {
   }
 }
 
+.saved-records {
+  display: grid;
+  gap: 18px;
+}
+
+.records-filters {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.45);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+}
+
+.records-filters label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.filter-field {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-search {
+  grid-column: span 2;
+}
+
+.filter-date {
+  min-width: 0;
+}
+
+.filter-confidence .slider-control {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.filter-confidence output {
+  min-width: 56px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.6);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  text-align: center;
+}
+
+.filter-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .records-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .filter-search {
+    grid-column: auto;
+  }
+}
+
+.records-timeline {
+  display: grid;
+  gap: 16px;
+}
+
+.timeline-group {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.4);
+}
+
+.timeline-group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.timeline-group-body {
+  display: grid;
+  gap: 10px;
+}
+
+.timeline-group-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.timeline-group-count {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.record-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.35);
+  align-items: center;
+}
+
+.record-row:hover {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.record-content {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.record-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.record-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.record-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.record-actions .button-secondary {
+  background: rgba(148, 163, 184, 0.25);
+}
+
+.confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+}
+
+.confidence-badge[data-level="medium"] {
+  background: rgba(251, 191, 36, 0.18);
+  color: #facc15;
+}
+
+.confidence-badge[data-level="low"] {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+.confidence-badge[data-level="unknown"] {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5f5;
+}
+
+.empty-state--records {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  padding: 32px 24px;
+  border-radius: 16px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.4);
+  color: #94a3b8;
+}
+
+.empty-state-illustration {
+  width: 88px;
+  height: 64px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(14, 165, 233, 0.08));
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.18);
+}
+
+.empty-state-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  text-align: center;
+}
+
+.empty-state-description {
+  margin: 0;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.empty-state--records .button-secondary {
+  background: rgba(148, 163, 184, 0.2);
+}
+
 .json-viewer {
   min-height: 360px;
   border-radius: 12px;

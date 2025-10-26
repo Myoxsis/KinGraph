@@ -233,7 +233,45 @@
               <h2>Saved records</h2>
               <button type="button" id="clear-records" class="button-secondary">Clear all</button>
             </header>
-            <div id="saved-records" class="saved-records-list"></div>
+            <div id="saved-records" class="saved-records">
+              <form id="records-filters" class="records-filters" autocomplete="off">
+                <div class="filter-field filter-search">
+                  <label for="filter-search">Search</label>
+                  <input type="search" id="filter-search" name="search" placeholder="Search saved records" />
+                </div>
+                <div class="filter-field">
+                  <label for="filter-individual">Individual</label>
+                  <select id="filter-individual" name="individual"></select>
+                </div>
+                <div class="filter-field filter-date">
+                  <label for="filter-start-date">From</label>
+                  <input type="date" id="filter-start-date" name="start" />
+                </div>
+                <div class="filter-field filter-date">
+                  <label for="filter-end-date">To</label>
+                  <input type="date" id="filter-end-date" name="end" />
+                </div>
+                <div class="filter-field filter-confidence">
+                  <label for="filter-confidence">Confidence</label>
+                  <div class="slider-control">
+                    <input
+                      type="range"
+                      id="filter-confidence"
+                      name="confidence"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value="0"
+                    />
+                    <output id="filter-confidence-value" for="filter-confidence">0%</output>
+                  </div>
+                </div>
+                <div class="filter-actions">
+                  <button type="reset" class="button-secondary">Reset filters</button>
+                </div>
+              </form>
+              <div class="records-timeline" id="records-timeline"></div>
+            </div>
           </section>
         </div>
             </section>
