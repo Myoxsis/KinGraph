@@ -1525,6 +1525,23 @@ iframe {
   box-shadow: none;
 }
 
+.import-preview {
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  background: var(--surface-elevated);
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.import-preview table {
+  width: 100%;
+}
+
+.import-preview-empty {
+  margin: 0;
+}
+
 .modal {
   position: fixed;
   inset: 0;

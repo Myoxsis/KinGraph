@@ -144,6 +144,7 @@
             </button>
           </form>
           <div class="command-actions">
+            <button type="button" class="command-button" id="open-import-modal">Import CSV</button>
             <a class="command-button" href="#html-input">Import HTML</a>
             <a class="command-button command-button--primary" href="#save-panel">Save record</a>
           </div>
@@ -183,11 +184,13 @@
                     <div class="toolbar-status" aria-live="polite">
                       <span id="char-count">0 characters</span>
                       <span id="last-run">Last extracted — never</span>
+                      <span id="import-queue-status" hidden></span>
                     </div>
                     <div class="toolbar-actions">
                       <button id="toggle-sources" type="button" disabled>Highlight sources</button>
                       <button id="reextract" type="button" class="button-secondary" disabled>Run extract</button>
                       <button id="clear-input" type="button" class="button-secondary" disabled>Clear input</button>
+                      <button id="load-next-import" type="button" class="button-secondary" hidden>Load next import</button>
                     </div>
                   </div>
                   <iframe id="source-preview" title="Provenance preview" hidden></iframe>
@@ -303,6 +306,49 @@
             </div>
           </section>
         </main>
+      </div>
+    </div>
+
+    <div id="csv-import-modal" class="modal" hidden aria-hidden="true">
+      <div class="modal-backdrop" id="csv-import-backdrop"></div>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="csv-import-title">
+        <header class="modal-header">
+          <div>
+            <p class="modal-eyebrow">Records</p>
+            <h2 class="modal-title" id="csv-import-title">Import from CSV</h2>
+          </div>
+          <button type="button" class="modal-close" id="close-import-modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </header>
+        <div class="modal-content">
+          <form id="csv-import-form" class="choice">
+            <div class="control">
+              <label for="csv-import-file">CSV file</label>
+              <input type="file" id="csv-import-file" accept=".csv,text/csv" />
+              <p class="supporting-text">
+                Select a CSV file that includes HTML snippets in one of the columns. We'll queue each row for extraction.
+              </p>
+            </div>
+            <div class="control">
+              <label for="csv-import-column">HTML column</label>
+              <select id="csv-import-column" disabled>
+                <option value="">Select a column…</option>
+              </select>
+              <p class="supporting-text">Choose which column contains the HTML you want to extract.</p>
+            </div>
+            <div class="control">
+              <div id="csv-import-preview" class="import-preview" aria-live="polite">
+                <p class="supporting-text">Select a CSV file to preview the first five rows.</p>
+              </div>
+            </div>
+            <p id="csv-import-feedback" class="supporting-text" aria-live="polite"></p>
+            <div class="card-actions">
+              <button type="submit" id="csv-import-submit" disabled>Queue import</button>
+              <button type="button" class="button-secondary" id="csv-import-cancel">Cancel</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
 

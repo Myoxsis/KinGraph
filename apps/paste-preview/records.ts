@@ -46,6 +46,21 @@ interface RecordFilterCriteria {
 
 const UNLINKED_FILTER_VALUE = "__unlinked__";
 
+interface CsvImportRow {
+  index: number;
+  cells: string[];
+}
+
+interface CsvImportData {
+  headers: string[];
+  rows: CsvImportRow[];
+}
+
+interface ImportQueueItem {
+  html: string;
+  rowIndex: number;
+}
+
 const DEFAULT_FILTERS: RecordFilterCriteria = {
   search: "",
   individualId: "",
@@ -64,7 +79,7 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   "parents.mother": "Mother",
 };
 
-type ExtractionTrigger = "auto" | "manual" | "sample" | "load" | "reset";
+type ExtractionTrigger = "auto" | "manual" | "sample" | "load" | "reset" | "import";
 
 interface RecordsElements {
   htmlInput: HTMLTextAreaElement;
@@ -102,6 +117,19 @@ interface RecordsElements {
   workspaceSearchForm: HTMLFormElement | null;
   workspaceSearchInput: HTMLInputElement;
   workspaceSearchClear: HTMLButtonElement | null;
+  openImportModalButton: HTMLButtonElement;
+  loadNextImportButton: HTMLButtonElement;
+  importQueueStatus: HTMLSpanElement;
+  importModal: HTMLDivElement;
+  importModalBackdrop: HTMLDivElement;
+  importModalClose: HTMLButtonElement;
+  importModalForm: HTMLFormElement;
+  importModalFileInput: HTMLInputElement;
+  importModalColumnSelect: HTMLSelectElement;
+  importModalPreview: HTMLDivElement;
+  importModalFeedback: HTMLParagraphElement;
+  importModalSubmit: HTMLButtonElement;
+  importModalCancel: HTMLButtonElement;
 }
 
 const DEFAULT_HTML = "<h1>Jane Doe</h1><p>Born about 1892 to Mary &amp; John.</p>";
@@ -431,6 +459,47 @@ function determineDateBucket(records: StoredRecord[]): "day" | "week" {
   return diffDays > 14 ? "week" : "day";
 }
 
+function parseCsv(content: string): string[][] {
+  const rows: string[][] = [];
+  let field = "";
+  let row: string[] = [];
+  let inQuotes = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+
+    if (char === "\"") {
+      if (inQuotes && content[index + 1] === "\"") {
+        field += "\"";
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      row.push(field);
+      field = "";
+    } else if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && content[index + 1] === "\n") {
+        index += 1;
+      }
+
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += char;
+    }
+  }
+
+  if (field.length > 0 || row.length > 0 || inQuotes) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows.filter((record) => record.some((cell) => cell.trim().length > 0));
+}
+
 export function initializeRecordsPage(): void {
   const elements = getRecordsElements();
 
@@ -474,6 +543,19 @@ export function initializeRecordsPage(): void {
     workspaceSearchForm,
     workspaceSearchInput,
     workspaceSearchClear,
+    openImportModalButton,
+    loadNextImportButton,
+    importQueueStatus,
+    importModal,
+    importModalBackdrop,
+    importModalClose,
+    importModalForm,
+    importModalFileInput,
+    importModalColumnSelect,
+    importModalPreview,
+    importModalFeedback,
+    importModalSubmit,
+    importModalCancel,
   } = elements;
 
   let latestState = getState();
@@ -485,6 +567,9 @@ export function initializeRecordsPage(): void {
   let pendingExtraction: number | null = null;
   let lastExtractionTimestamp: string | null = null;
   let currentFilters: RecordFilterCriteria = { ...DEFAULT_FILTERS };
+  let importQueue: ImportQueueItem[] = [];
+  let importColumnLabel = "";
+  let importData: CsvImportData | null = null;
 
   const maybeSearchHandle = initializeWorkspaceSearch({
     elements: {
@@ -511,6 +596,60 @@ export function initializeRecordsPage(): void {
     renderMatchSuggestions(currentRecord);
   });
 
+  openImportModalButton.addEventListener("click", () => {
+    openImportModal();
+  });
+
+  importModalClose.addEventListener("click", () => {
+    closeImportModal();
+  });
+
+  importModalCancel.addEventListener("click", () => {
+    closeImportModal();
+  });
+
+  importModalBackdrop.addEventListener("click", () => {
+    closeImportModal();
+  });
+
+  importModalFileInput.addEventListener("change", () => {
+    void handleImportFileChange();
+  });
+
+  importModalColumnSelect.addEventListener("change", () => {
+    handleImportColumnChange();
+  });
+
+  importModalForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    handleImportSubmit();
+  });
+
+  loadNextImportButton.addEventListener("click", () => {
+    if (!importQueue.length) {
+      setFeedback("No pending CSV imports.");
+      updateImportQueueStatus();
+      return;
+    }
+
+    const next = importQueue.shift();
+
+    if (!next) {
+      updateImportQueueStatus();
+      return;
+    }
+
+    applyImportItem(next, importQueue.length);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !importModal.hidden) {
+      closeImportModal();
+    }
+  });
+
+  updateImportQueueStatus();
+
   function buildExtractOptions(): ExtractOptions {
     return {
       professions: latestState.professions.map((definition) => ({
@@ -529,6 +668,308 @@ export function initializeRecordsPage(): void {
     saveFeedback.textContent = message;
   }
 
+  function updateImportQueueStatus(): void {
+    if (importQueue.length > 0) {
+      const remaining = importQueue.length;
+      importQueueStatus.hidden = false;
+      importQueueStatus.textContent = `${remaining.toLocaleString()} CSV row${remaining === 1 ? "" : "s"} remaining`;
+      loadNextImportButton.hidden = false;
+      loadNextImportButton.disabled = false;
+    } else {
+      importQueueStatus.hidden = true;
+      importQueueStatus.textContent = "";
+      loadNextImportButton.hidden = true;
+      loadNextImportButton.disabled = true;
+    }
+  }
+
+  function createColumnPlaceholderOption(): HTMLOptionElement {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Select a column…";
+    return option;
+  }
+
+  function setImportModalFeedback(message: string, isError = false): void {
+    importModalFeedback.textContent = message;
+    importModalFeedback.hidden = message.trim().length === 0;
+    importModalFeedback.classList.toggle("error", isError);
+  }
+
+  function renderImportPreview(data: CsvImportData | null): void {
+    importModalPreview.replaceChildren();
+
+    if (!data) {
+      const hint = document.createElement("p");
+      hint.className = "supporting-text import-preview-empty";
+      hint.textContent = "Select a CSV file to preview the first five rows.";
+      importModalPreview.appendChild(hint);
+      return;
+    }
+
+    if (!data.headers.length || !data.rows.length) {
+      const empty = document.createElement("p");
+      empty.className = "supporting-text import-preview-empty";
+      empty.textContent = "No data rows found in the selected CSV.";
+      importModalPreview.appendChild(empty);
+      return;
+    }
+
+    const table = document.createElement("table");
+    table.className = "data-table";
+
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+
+    for (const header of data.headers) {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = header;
+      headRow.appendChild(th);
+    }
+
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+
+    for (const row of data.rows.slice(0, 5)) {
+      const tr = document.createElement("tr");
+
+      for (const cell of row.cells) {
+        const td = document.createElement("td");
+        td.textContent = cell;
+        tr.appendChild(td);
+      }
+
+      tbody.appendChild(tr);
+    }
+
+    table.appendChild(tbody);
+    importModalPreview.appendChild(table);
+  }
+
+  function resetImportModalState(): void {
+    importData = null;
+    importModalForm.reset();
+    importModalFileInput.value = "";
+    importModalColumnSelect.replaceChildren(createColumnPlaceholderOption());
+    importModalColumnSelect.disabled = true;
+    importModalSubmit.disabled = true;
+    setImportModalFeedback("");
+    renderImportPreview(null);
+  }
+
+  function openImportModal(): void {
+    resetImportModalState();
+    importModal.hidden = false;
+    importModal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+    window.setTimeout(() => {
+      importModalFileInput.focus();
+    }, 0);
+  }
+
+  function closeImportModal(): void {
+    importModal.hidden = true;
+    importModal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("modal-open");
+    resetImportModalState();
+  }
+
+  async function handleImportFileChange(): Promise<void> {
+    importModalColumnSelect.replaceChildren(createColumnPlaceholderOption());
+    importModalColumnSelect.disabled = true;
+    importModalSubmit.disabled = true;
+    setImportModalFeedback("");
+
+    const file = importModalFileInput.files && importModalFileInput.files[0];
+
+    if (!file) {
+      renderImportPreview(null);
+      return;
+    }
+
+    try {
+      const text = (await file.text()).replace(/^\ufeff/, "");
+      const parsed = parseCsv(text);
+
+      if (!parsed.length) {
+        importData = { headers: [], rows: [] };
+        renderImportPreview(importData);
+        setImportModalFeedback("The selected CSV file is empty.", true);
+        return;
+      }
+
+      const columnCount = parsed.reduce((max, row) => Math.max(max, row.length), 0);
+
+      if (!columnCount) {
+        importData = { headers: [], rows: [] };
+        renderImportPreview(importData);
+        setImportModalFeedback("No columns were detected in the selected CSV.", true);
+        return;
+      }
+
+      const headerSource = parsed[0] ?? [];
+      const headers = Array.from({ length: columnCount }, (_, index) => {
+        const raw = headerSource[index] ?? "";
+        const trimmed = raw.trim();
+        return trimmed || `Column ${index + 1}`;
+      });
+
+      const rows: CsvImportRow[] = parsed
+        .slice(1)
+        .map((cells, rowIndex) => ({
+          index: rowIndex + 1,
+          cells: Array.from({ length: columnCount }, (_, columnIndex) => cells[columnIndex] ?? ""),
+        }))
+        .filter((row) => row.cells.some((cell) => cell.trim().length > 0));
+
+      importData = { headers, rows };
+      renderImportPreview(importData);
+
+      if (!rows.length) {
+        setImportModalFeedback("No data rows found in the selected CSV.", true);
+        return;
+      }
+
+      const options = headers.map((header, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = header;
+        return option;
+      });
+
+      importModalColumnSelect.replaceChildren(createColumnPlaceholderOption(), ...options);
+      importModalColumnSelect.disabled = false;
+      setImportModalFeedback(
+        "Previewing the first five rows. Select the column that contains HTML to continue."
+      );
+    } catch (error) {
+      console.error("Failed to read CSV file", error);
+      importData = { headers: [], rows: [] };
+      renderImportPreview(importData);
+      setImportModalFeedback("Unable to read the selected CSV file.", true);
+    }
+  }
+
+  function handleImportColumnChange(): void {
+    if (!importData) {
+      importModalSubmit.disabled = true;
+      setImportModalFeedback("Select a CSV file to preview before choosing a column.", true);
+      return;
+    }
+
+    const value = importModalColumnSelect.value;
+
+    if (!value) {
+      importModalSubmit.disabled = true;
+      setImportModalFeedback("Choose which column includes the HTML snippets to import.");
+      return;
+    }
+
+    const columnIndex = Number.parseInt(value, 10);
+
+    if (Number.isNaN(columnIndex)) {
+      importModalSubmit.disabled = true;
+      setImportModalFeedback("Select a valid column to continue.", true);
+      return;
+    }
+
+    const columnName = importData.headers[columnIndex] ?? `Column ${columnIndex + 1}`;
+    const matchingRows = importData.rows.filter((row) => (row.cells[columnIndex] ?? "").trim().length > 0);
+
+    if (!matchingRows.length) {
+      importModalSubmit.disabled = true;
+      setImportModalFeedback(`No HTML content detected in ${columnName}.`, true);
+      return;
+    }
+
+    importModalSubmit.disabled = false;
+    setImportModalFeedback(
+      `Found ${matchingRows.length.toLocaleString()} row${matchingRows.length === 1 ? "" : "s"} with HTML in ${columnName}.`
+    );
+  }
+
+  function handleImportSubmit(): void {
+    if (!importData) {
+      setImportModalFeedback("Select a CSV file to import before queuing records.", true);
+      return;
+    }
+
+    const value = importModalColumnSelect.value;
+
+    if (!value) {
+      setImportModalFeedback("Choose a column that contains the HTML to import.", true);
+      return;
+    }
+
+    const columnIndex = Number.parseInt(value, 10);
+
+    if (Number.isNaN(columnIndex)) {
+      setImportModalFeedback("Select a valid column to continue.", true);
+      return;
+    }
+
+    const columnName = importData.headers[columnIndex] ?? `Column ${columnIndex + 1}`;
+    const htmlRows = importData.rows
+      .map<ImportQueueItem>((row) => ({
+        html: row.cells[columnIndex] ?? "",
+        rowIndex: row.index,
+      }))
+      .filter((item) => item.html.trim().length > 0);
+
+    if (!htmlRows.length) {
+      setImportModalFeedback(`No HTML content detected in ${columnName}.`, true);
+      return;
+    }
+
+    const [first, ...remaining] = htmlRows;
+    importQueue = remaining;
+    importColumnLabel = columnName;
+    closeImportModal();
+    applyImportItem(first, importQueue.length);
+  }
+
+  function applyImportItem(item: ImportQueueItem, remaining: number): void {
+    htmlInput.value = item.html;
+    htmlInput.focus();
+    showingSources = false;
+    toggleSourcesButton.textContent = "Highlight sources";
+    toggleSourcesButton.disabled = true;
+    previewFrame.hidden = true;
+    previewFrame.srcdoc = "";
+    lastHighlightDocument = "";
+    provenanceCount.hidden = true;
+    provenanceCount.textContent = "";
+
+    if (pendingExtraction !== null) {
+      window.clearTimeout(pendingExtraction);
+      pendingExtraction = null;
+    }
+
+    updateCharCount();
+
+    const columnLabel = importColumnLabel || "the selected column";
+    const remainingMessage =
+      remaining > 0
+        ? `${remaining.toLocaleString()} row${remaining === 1 ? "" : "s"} remaining.`
+        : "No more rows remaining.";
+
+    if (autoExtractEnabled) {
+      runExtraction({ trigger: "import", label: `CSV row ${item.rowIndex}` });
+      setFeedback(`CSV row ${item.rowIndex} imported from ${columnLabel}. ${remainingMessage}`);
+    } else {
+      updateRunButtonState();
+      setFeedback(`CSV row ${item.rowIndex} loaded from ${columnLabel}. ${remainingMessage} Run extract to process.`);
+    }
+
+    updateImportQueueStatus();
+
+    if (remaining === 0) {
+      importColumnLabel = "";
+    }
+  }
   function updateCharCount(): void {
     const length = htmlInput.value.length;
     const label = length === 1 ? "character" : "characters";
@@ -1212,6 +1653,8 @@ export function initializeRecordsPage(): void {
             return label ? `Loaded record saved ${label}.` : "Loaded extraction from saved record.";
           case "reset":
             return "Starter sample extracted.";
+          case "import":
+            return label ? `Extracted CSV row: ${label}.` : "Extracted record from CSV import.";
           default:
             return "Extraction updated from pasted HTML.";
         }
@@ -1566,6 +2009,19 @@ function getRecordsElements(): RecordsElements | null {
   const workspaceSearchForm = document.getElementById("workspace-search-form");
   const workspaceSearchInput = document.getElementById("workspace-search");
   const workspaceSearchClear = document.getElementById("workspace-search-clear");
+  const openImportModalButton = document.getElementById("open-import-modal");
+  const loadNextImportButton = document.getElementById("load-next-import");
+  const importQueueStatus = document.getElementById("import-queue-status");
+  const importModal = document.getElementById("csv-import-modal");
+  const importModalBackdrop = document.getElementById("csv-import-backdrop");
+  const importModalClose = document.getElementById("close-import-modal");
+  const importModalForm = document.getElementById("csv-import-form");
+  const importModalFileInput = document.getElementById("csv-import-file");
+  const importModalColumnSelect = document.getElementById("csv-import-column");
+  const importModalPreview = document.getElementById("csv-import-preview");
+  const importModalFeedback = document.getElementById("csv-import-feedback");
+  const importModalSubmit = document.getElementById("csv-import-submit");
+  const importModalCancel = document.getElementById("csv-import-cancel");
 
   if (
     !(
@@ -1601,7 +2057,20 @@ function getRecordsElements(): RecordsElements | null {
       filterConfidenceInput instanceof HTMLInputElement &&
       filterConfidenceOutput instanceof HTMLOutputElement &&
       recordsTimeline instanceof HTMLDivElement &&
-      workspaceSearchInput instanceof HTMLInputElement
+      workspaceSearchInput instanceof HTMLInputElement &&
+      openImportModalButton instanceof HTMLButtonElement &&
+      loadNextImportButton instanceof HTMLButtonElement &&
+      importQueueStatus instanceof HTMLSpanElement &&
+      importModal instanceof HTMLDivElement &&
+      importModalBackdrop instanceof HTMLDivElement &&
+      importModalClose instanceof HTMLButtonElement &&
+      importModalForm instanceof HTMLFormElement &&
+      importModalFileInput instanceof HTMLInputElement &&
+      importModalColumnSelect instanceof HTMLSelectElement &&
+      importModalPreview instanceof HTMLDivElement &&
+      importModalFeedback instanceof HTMLParagraphElement &&
+      importModalSubmit instanceof HTMLButtonElement &&
+      importModalCancel instanceof HTMLButtonElement
     )
   ) {
     return null;
@@ -1644,6 +2113,19 @@ function getRecordsElements(): RecordsElements | null {
     workspaceSearchInput,
     workspaceSearchClear:
       workspaceSearchClear instanceof HTMLButtonElement ? workspaceSearchClear : null,
+    openImportModalButton,
+    loadNextImportButton,
+    importQueueStatus,
+    importModal,
+    importModalBackdrop,
+    importModalClose,
+    importModalForm,
+    importModalFileInput,
+    importModalColumnSelect,
+    importModalPreview,
+    importModalFeedback,
+    importModalSubmit,
+    importModalCancel,
   };
 }
 
