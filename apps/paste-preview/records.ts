@@ -14,6 +14,7 @@ import {
 import {
   buildHighlightDocument,
   formatDate,
+  formatLifespan,
   formatTimestamp,
   getLatestRecordForIndividual,
   getRecordSummary,
@@ -87,6 +88,8 @@ interface RecordsElements {
   existingIndividualSelect: HTMLSelectElement;
   saveButton: HTMLButtonElement;
   saveFeedback: HTMLSpanElement;
+  matchSuggestions: HTMLDivElement;
+  matchSuggestionsList: HTMLUListElement;
   clearRecordsButton: HTMLButtonElement;
   savedRecordsContainer: HTMLDivElement;
   recordsFiltersForm: HTMLFormElement;
@@ -171,6 +174,243 @@ function formatConfidenceOutput(value: number): string {
   return `≥ ${Math.round(value * 100)}%`;
 }
 
+const MATCH_SUGGESTION_THRESHOLD = 0.45;
+const MAX_MATCH_SUGGESTIONS = 5;
+
+interface MatchCandidate {
+  individual: StoredIndividual;
+  latestRecord: StoredRecord | null;
+  score: number;
+}
+
+function normalizeForTokens(value: string): string {
+  const normalized = typeof value.normalize === "function" ? value.normalize("NFKD") : value;
+  return normalized.replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function tokenizeName(value: string): string[] {
+  return normalizeForTokens(value)
+    .split(/[^a-z0-9]+/g)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+}
+
+function collectRecordNameTokens(record: IndividualRecord): Set<string> {
+  const tokens = new Set<string>();
+
+  const add = (value: string | undefined) => {
+    if (!value) {
+      return;
+    }
+
+    for (const token of tokenizeName(value)) {
+      tokens.add(token);
+    }
+  };
+
+  for (const name of record.givenNames) {
+    add(name);
+  }
+
+  add(record.surname);
+  add(record.maidenName);
+
+  for (const alias of record.aliases) {
+    add(alias);
+  }
+
+  return tokens;
+}
+
+function collectIndividualNameTokens(
+  individual: StoredIndividual,
+  latestRecord: StoredRecord | null,
+): Set<string> {
+  const tokens = new Set<string>();
+
+  const add = (value: string | undefined) => {
+    if (!value) {
+      return;
+    }
+
+    for (const token of tokenizeName(value)) {
+      tokens.add(token);
+    }
+  };
+
+  add(individual.name);
+
+  for (const name of individual.profile.givenNames) {
+    add(name);
+  }
+
+  add(individual.profile.surname);
+  add(individual.profile.maidenName);
+
+  for (const alias of individual.profile.aliases) {
+    add(alias);
+  }
+
+  if (latestRecord) {
+    for (const token of collectRecordNameTokens(latestRecord.record)) {
+      tokens.add(token);
+    }
+  }
+
+  return tokens;
+}
+
+function computeTokenOverlap(a: Set<string>, b: Set<string>): number | null {
+  if (a.size === 0 || b.size === 0) {
+    return null;
+  }
+
+  let intersection = 0;
+
+  for (const token of a) {
+    if (b.has(token)) {
+      intersection += 1;
+    }
+  }
+
+  const union = new Set([...a, ...b]);
+  return intersection / union.size;
+}
+
+function computeYearSimilarity(a?: number, b?: number): number | null {
+  if (typeof a !== "number" || typeof b !== "number") {
+    return null;
+  }
+
+  const diff = Math.abs(a - b);
+
+  if (diff === 0) {
+    return 1;
+  }
+
+  if (diff === 1) {
+    return 0.75;
+  }
+
+  if (diff === 2) {
+    return 0.5;
+  }
+
+  if (diff <= 5) {
+    return 0.25;
+  }
+
+  return 0;
+}
+
+function computeNameSimilarity(a?: string, b?: string): number | null {
+  if (!a || !b) {
+    return null;
+  }
+
+  const tokensA = new Set(tokenizeName(a));
+  const tokensB = new Set(tokenizeName(b));
+  return computeTokenOverlap(tokensA, tokensB);
+}
+
+function resolveCandidateParents(
+  individual: StoredIndividual,
+  latestRecord: StoredRecord | null,
+): { father?: string; mother?: string } {
+  const recordParents = latestRecord?.record.parents ?? {};
+
+  return {
+    father: individual.profile.parents.father ?? recordParents.father,
+    mother: individual.profile.parents.mother ?? recordParents.mother,
+  };
+}
+
+function computeMatchScore(
+  record: IndividualRecord,
+  individual: StoredIndividual,
+  latestRecord: StoredRecord | null,
+): number {
+  const components: { score: number; weight: number }[] = [];
+
+  const recordTokens = collectRecordNameTokens(record);
+  const individualTokens = collectIndividualNameTokens(individual, latestRecord);
+  const nameScore = computeTokenOverlap(recordTokens, individualTokens);
+
+  if (nameScore !== null) {
+    components.push({ score: nameScore, weight: 0.6 });
+  }
+
+  const birthYear = record.birth.year;
+  const candidateBirthYear = individual.profile.birth.year ?? latestRecord?.record.birth.year;
+  const birthScore = computeYearSimilarity(birthYear, candidateBirthYear);
+
+  if (birthScore !== null) {
+    components.push({ score: birthScore, weight: 0.2 });
+  }
+
+  const deathYear = record.death.year;
+  const candidateDeathYear = individual.profile.death.year ?? latestRecord?.record.death.year;
+  const deathScore = computeYearSimilarity(deathYear, candidateDeathYear);
+
+  if (deathScore !== null) {
+    components.push({ score: deathScore, weight: 0.1 });
+  }
+
+  const candidateParents = resolveCandidateParents(individual, latestRecord);
+  const parentMatches: number[] = [];
+  const fatherMatch = computeNameSimilarity(record.parents.father, candidateParents.father);
+  if (fatherMatch !== null) {
+    parentMatches.push(fatherMatch);
+  }
+  const motherMatch = computeNameSimilarity(record.parents.mother, candidateParents.mother);
+  if (motherMatch !== null) {
+    parentMatches.push(motherMatch);
+  }
+
+  if (parentMatches.length) {
+    const parentAverage = parentMatches.reduce((total, value) => total + value, 0) / parentMatches.length;
+    components.push({ score: parentAverage, weight: 0.1 });
+  }
+
+  if (!components.length) {
+    return 0;
+  }
+
+  const totalWeight = components.reduce((total, component) => total + component.weight, 0);
+  const weightedScore = components.reduce(
+    (total, component) => total + component.score * component.weight,
+    0,
+  );
+
+  const normalized = weightedScore / totalWeight;
+  return Math.max(0, Math.min(1, normalized));
+}
+
+function buildMatchCandidates(
+  record: IndividualRecord,
+  individuals: StoredIndividual[],
+  records: StoredRecord[],
+): MatchCandidate[] {
+  const candidates: MatchCandidate[] = [];
+
+  for (const individual of individuals) {
+    const latest = getLatestRecordForIndividual(individual.id, records);
+    const score = computeMatchScore(record, individual, latest);
+
+    if (score <= 0) {
+      continue;
+    }
+
+    candidates.push({
+      individual,
+      latestRecord: latest,
+      score,
+    });
+  }
+
+  return candidates.sort((a, b) => b.score - a.score);
+}
+
 function determineDateBucket(records: StoredRecord[]): "day" | "week" {
   if (records.length < 2) {
     return "day";
@@ -220,6 +460,8 @@ export function initializeRecordsPage(): void {
     existingIndividualSelect,
     saveButton,
     saveFeedback,
+    matchSuggestions,
+    matchSuggestionsList,
     clearRecordsButton,
     savedRecordsContainer,
     recordsFiltersForm,
@@ -263,6 +505,11 @@ export function initializeRecordsPage(): void {
   }
 
   const searchHandle = maybeSearchHandle;
+
+  matchSuggestionsList.addEventListener("change", handleMatchSuggestionChange);
+  existingIndividualSelect.addEventListener("change", () => {
+    renderMatchSuggestions(currentRecord);
+  });
 
   function buildExtractOptions(): ExtractOptions {
     return {
@@ -680,6 +927,104 @@ export function initializeRecordsPage(): void {
     renderSavedRecords(latestState, currentFilters);
   }
 
+  function renderMatchSuggestions(record: IndividualRecord | null): void {
+    if (
+      !record ||
+      latestState.individuals.length === 0 ||
+      saveModeExisting.disabled
+    ) {
+      matchSuggestions.hidden = true;
+      matchSuggestionsList.replaceChildren();
+      return;
+    }
+
+    const candidates = buildMatchCandidates(record, latestState.individuals, latestState.records);
+    const suggestions = candidates
+      .filter((candidate) => candidate.score >= MATCH_SUGGESTION_THRESHOLD)
+      .slice(0, MAX_MATCH_SUGGESTIONS);
+
+    if (!suggestions.length) {
+      matchSuggestions.hidden = true;
+      matchSuggestionsList.replaceChildren();
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    const selectedId = existingIndividualSelect.value;
+
+    for (const suggestion of suggestions) {
+      const item = document.createElement("li");
+      const label = document.createElement("label");
+      label.className = "match-suggestion";
+
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "match-suggestion";
+      input.value = suggestion.individual.id;
+      input.checked = suggestion.individual.id === selectedId;
+
+      const details = document.createElement("div");
+      details.className = "match-suggestion-details";
+
+      const name = document.createElement("span");
+      name.textContent = suggestion.individual.name;
+
+      const score = document.createElement("span");
+      score.className = "match-suggestion-score";
+      score.textContent = `${Math.round(suggestion.score * 100)}% match`;
+
+      details.append(name, score);
+
+      const profileSource =
+        suggestion.individual.profile.birth.year !== undefined ||
+        suggestion.individual.profile.death.year !== undefined
+          ? suggestion.individual.profile
+          : suggestion.latestRecord?.record ?? suggestion.individual.profile;
+
+      const metaParts: string[] = [];
+      const lifespan = formatLifespan(profileSource);
+      if (lifespan) {
+        metaParts.push(lifespan);
+      }
+
+      if (suggestion.latestRecord) {
+        metaParts.push(`Last saved ${formatTimestamp(suggestion.latestRecord.createdAt)}`);
+      }
+
+      if (metaParts.length) {
+        const meta = document.createElement("span");
+        meta.className = "match-suggestion-meta";
+        meta.textContent = metaParts.join(" • ");
+        details.appendChild(meta);
+      }
+
+      label.append(input, details);
+      item.appendChild(label);
+      fragment.appendChild(item);
+    }
+
+    matchSuggestionsList.replaceChildren(fragment);
+    matchSuggestions.hidden = false;
+  }
+
+  function handleMatchSuggestionChange(event: Event): void {
+    const target = event.target;
+
+    if (!(target instanceof HTMLInputElement) || target.name !== "match-suggestion") {
+      return;
+    }
+
+    if (!target.value || saveModeExisting.disabled) {
+      return;
+    }
+
+    saveModeExisting.checked = true;
+    saveModeNew.checked = false;
+    existingIndividualSelect.value = target.value;
+    updateSavePanel();
+    existingIndividualSelect.focus();
+  }
+
   function updateSavePanel(): void {
     const hasRecord = Boolean(currentRecord);
     const hasIndividuals = latestState.individuals.length > 0;
@@ -711,6 +1056,7 @@ export function initializeRecordsPage(): void {
     }
 
     populateExistingIndividuals(latestState.individuals);
+    renderMatchSuggestions(currentRecord);
   }
 
   function renderSavedRecords(
@@ -1206,6 +1552,8 @@ function getRecordsElements(): RecordsElements | null {
   const existingIndividualSelect = document.getElementById("existing-individual-select");
   const saveButton = document.getElementById("save-button");
   const saveFeedback = document.getElementById("save-feedback");
+  const matchSuggestions = document.getElementById("match-suggestions");
+  const matchSuggestionsList = document.getElementById("match-suggestions-list");
   const clearRecordsButton = document.getElementById("clear-records");
   const savedRecordsContainer = document.getElementById("saved-records");
   const recordsFiltersForm = document.getElementById("records-filters");
@@ -1242,6 +1590,8 @@ function getRecordsElements(): RecordsElements | null {
       existingIndividualSelect instanceof HTMLSelectElement &&
       saveButton instanceof HTMLButtonElement &&
       saveFeedback instanceof HTMLSpanElement &&
+      matchSuggestions instanceof HTMLDivElement &&
+      matchSuggestionsList instanceof HTMLUListElement &&
       clearRecordsButton instanceof HTMLButtonElement &&
       savedRecordsContainer instanceof HTMLDivElement &&
       recordsFiltersForm instanceof HTMLFormElement &&
@@ -1279,6 +1629,8 @@ function getRecordsElements(): RecordsElements | null {
     existingIndividualSelect,
     saveButton,
     saveFeedback,
+    matchSuggestions,
+    matchSuggestionsList,
     clearRecordsButton,
     savedRecordsContainer,
     recordsFiltersForm,
