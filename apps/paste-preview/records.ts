@@ -205,6 +205,7 @@ function formatConfidenceOutput(value: number): string {
 }
 
 const MATCH_SUGGESTION_THRESHOLD = 0.45;
+const AUTO_MATCH_THRESHOLD = 0.8;
 const MAX_MATCH_SUGGESTIONS = 5;
 
 interface MatchCandidate {
@@ -578,6 +579,7 @@ export function initializeRecordsPage(): void {
   let isProcessingImportQueue = false;
   let importQueueTotal = 0;
   let importQueueProcessed = 0;
+  let isApplyingAutoMatch = false;
 
   const maybeSearchHandle = initializeWorkspaceSearch({
     elements: {
@@ -1646,6 +1648,30 @@ export function initializeRecordsPage(): void {
 
     matchSuggestionsList.replaceChildren(fragment);
     matchSuggestions.hidden = false;
+
+    if (
+      isProcessingImportQueue &&
+      !isApplyingAutoMatch &&
+      !saveModeExisting.disabled
+    ) {
+      const [topSuggestion] = suggestions;
+
+      if (
+        topSuggestion &&
+        topSuggestion.score >= AUTO_MATCH_THRESHOLD &&
+        existingIndividualSelect.value !== topSuggestion.individual.id
+      ) {
+        try {
+          isApplyingAutoMatch = true;
+          saveModeExisting.checked = true;
+          saveModeNew.checked = false;
+          existingIndividualSelect.value = topSuggestion.individual.id;
+          updateSavePanel();
+        } finally {
+          isApplyingAutoMatch = false;
+        }
+      }
+    }
   }
 
   function handleMatchSuggestionChange(event: Event): void {
