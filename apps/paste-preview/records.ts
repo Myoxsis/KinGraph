@@ -10,6 +10,7 @@ import {
   subscribe,
   type StoredIndividual,
   type StoredRecord,
+  type StoredRoleDefinition,
 } from "@/storage";
 import {
   buildHighlightDocument,
@@ -36,15 +37,20 @@ interface SampleSnippet {
   html: string;
 }
 
+type LinkStatusFilter = "all" | "linked" | "unlinked";
+
 interface RecordFilterCriteria {
   search: string;
   individualId: string;
+  linkStatus: LinkStatusFilter;
+  roleId: string;
   startDate: string;
   endDate: string;
   minConfidence: number;
 }
 
 const UNLINKED_FILTER_VALUE = "__unlinked__";
+export const NO_ROLE_FILTER_VALUE = "__no_role__";
 
 interface CsvImportRow {
   index: number;
@@ -64,6 +70,8 @@ interface ImportQueueItem {
 const DEFAULT_FILTERS: RecordFilterCriteria = {
   search: "",
   individualId: "",
+  linkStatus: "all",
+  roleId: "",
   startDate: "",
   endDate: "",
   minConfidence: 0,
@@ -109,6 +117,8 @@ interface RecordsElements {
   savedRecordsContainer: HTMLDivElement;
   recordsFiltersForm: HTMLFormElement;
   filterIndividualSelect: HTMLSelectElement;
+  filterLinkStatusSelect: HTMLSelectElement;
+  filterRoleSelect: HTMLSelectElement;
   filterStartDateInput: HTMLInputElement;
   filterEndDateInput: HTMLInputElement;
   filterConfidenceInput: HTMLInputElement;
@@ -538,6 +548,8 @@ export function initializeRecordsPage(): void {
     savedRecordsContainer,
     recordsFiltersForm,
     filterIndividualSelect,
+    filterLinkStatusSelect,
+    filterRoleSelect,
     filterStartDateInput,
     filterEndDateInput,
     filterConfidenceInput,
@@ -1540,6 +1552,44 @@ export function initializeRecordsPage(): void {
     return nextValue;
   }
 
+  function populateRoleFilterOptions(
+    roles: StoredRoleDefinition[],
+    desiredValue: string,
+  ): string {
+    const availableValues = new Set<string>();
+    const sorted = [...roles].sort((a, b) => a.label.localeCompare(b.label));
+
+    filterRoleSelect.replaceChildren();
+
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "All roles";
+    filterRoleSelect.appendChild(allOption);
+    availableValues.add(allOption.value);
+
+    const noRoleOption = document.createElement("option");
+    noRoleOption.value = NO_ROLE_FILTER_VALUE;
+    noRoleOption.textContent = "No role assigned";
+    filterRoleSelect.appendChild(noRoleOption);
+    availableValues.add(noRoleOption.value);
+
+    for (const role of sorted) {
+      const option = document.createElement("option");
+      option.value = role.id;
+      option.textContent = role.label;
+      filterRoleSelect.appendChild(option);
+      availableValues.add(option.value);
+    }
+
+    let nextValue = desiredValue;
+    if (!availableValues.has(nextValue)) {
+      nextValue = "";
+    }
+
+    filterRoleSelect.value = nextValue;
+    return nextValue;
+  }
+
   function createEmptyStateElement(state: "empty" | "no-matches"): HTMLElement {
     const container = document.createElement("div");
     container.className = "empty-state empty-state--records";
@@ -1581,6 +1631,13 @@ export function initializeRecordsPage(): void {
     return container;
   }
 
+  function normalizeLinkStatus(value: string): LinkStatusFilter {
+    if (value === "linked" || value === "unlinked") {
+      return value;
+    }
+    return "all";
+  }
+
   function readFiltersFromControls(): RecordFilterCriteria {
     const rawConfidence = Number(filterConfidenceInput.value);
     const normalizedConfidence = Number.isFinite(rawConfidence) ? rawConfidence / 100 : 0;
@@ -1588,6 +1645,8 @@ export function initializeRecordsPage(): void {
     return {
       search: workspaceSearchInput.value.trim(),
       individualId: filterIndividualSelect.value,
+      linkStatus: normalizeLinkStatus(filterLinkStatusSelect.value),
+      roleId: filterRoleSelect.value,
       startDate: filterStartDateInput.value,
       endDate: filterEndDateInput.value,
       minConfidence: Math.min(1, Math.max(0, normalizedConfidence)),
@@ -1793,13 +1852,28 @@ export function initializeRecordsPage(): void {
     }
 
     const normalizedIndividualId = populateFilterOptions(state.individuals, filters);
-    const normalizedFilters: RecordFilterCriteria = { ...filters, individualId: normalizedIndividualId };
+    const normalizedRoleId = populateRoleFilterOptions(state.roles, filters.roleId);
+    const normalizedLinkStatus = normalizeLinkStatus(filters.linkStatus);
+    filterLinkStatusSelect.value = normalizedLinkStatus;
 
-    if (filters === currentFilters && normalizedIndividualId !== filters.individualId) {
+    const normalizedFilters: RecordFilterCriteria = {
+      ...filters,
+      individualId: normalizedIndividualId,
+      roleId: normalizedRoleId,
+      linkStatus: normalizedLinkStatus,
+    };
+
+    if (
+      filters === currentFilters &&
+      (normalizedIndividualId !== filters.individualId ||
+        normalizedRoleId !== filters.roleId ||
+        normalizedLinkStatus !== filters.linkStatus)
+    ) {
       currentFilters = normalizedFilters;
     }
 
     searchHandle.setValue(normalizedFilters.search);
+    filterRoleSelect.value = normalizedRoleId;
     filterStartDateInput.value = normalizedFilters.startDate;
     filterEndDateInput.value = normalizedFilters.endDate;
 
@@ -2256,6 +2330,8 @@ function getRecordsElements(): RecordsElements | null {
   const savedRecordsContainer = document.getElementById("saved-records");
   const recordsFiltersForm = document.getElementById("records-filters");
   const filterIndividualSelect = document.getElementById("filter-individual");
+  const filterLinkStatusSelect = document.getElementById("filter-link-status");
+  const filterRoleSelect = document.getElementById("filter-role");
   const filterStartDateInput = document.getElementById("filter-start-date");
   const filterEndDateInput = document.getElementById("filter-end-date");
   const filterConfidenceInput = document.getElementById("filter-confidence");
@@ -2309,6 +2385,8 @@ function getRecordsElements(): RecordsElements | null {
       savedRecordsContainer instanceof HTMLDivElement &&
       recordsFiltersForm instanceof HTMLFormElement &&
       filterIndividualSelect instanceof HTMLSelectElement &&
+      filterLinkStatusSelect instanceof HTMLSelectElement &&
+      filterRoleSelect instanceof HTMLSelectElement &&
       filterStartDateInput instanceof HTMLInputElement &&
       filterEndDateInput instanceof HTMLInputElement &&
       filterConfidenceInput instanceof HTMLInputElement &&
@@ -2363,6 +2441,8 @@ function getRecordsElements(): RecordsElements | null {
     savedRecordsContainer,
     recordsFiltersForm,
     filterIndividualSelect,
+    filterLinkStatusSelect,
+    filterRoleSelect,
     filterStartDateInput,
     filterEndDateInput,
     filterConfidenceInput,
@@ -2478,7 +2558,7 @@ function countUnlinkedRecords(
   return records.reduce((total, record) => total + (individualMap.has(record.individualId) ? 0 : 1), 0);
 }
 
-function filterRecordsByCriteria(
+export function filterRecordsByCriteria(
   records: StoredRecord[],
   individualMap: Map<string, StoredIndividual>,
   filters: RecordFilterCriteria,
@@ -2492,13 +2572,32 @@ function filterRecordsByCriteria(
 
   for (const record of records) {
     const linkedIndividual = individualMap.get(record.individualId) ?? null;
+    const isLinked = Boolean(linkedIndividual);
 
     if (filters.individualId === UNLINKED_FILTER_VALUE) {
-      if (linkedIndividual) {
+      if (isLinked) {
         continue;
       }
     } else if (filters.individualId && record.individualId !== filters.individualId) {
       continue;
+    }
+
+    if (filters.linkStatus === "linked" && !isLinked) {
+      continue;
+    }
+
+    if (filters.linkStatus === "unlinked" && isLinked) {
+      continue;
+    }
+
+    if (filters.roleId) {
+      if (filters.roleId === NO_ROLE_FILTER_VALUE) {
+        if (linkedIndividual && linkedIndividual.roleId) {
+          continue;
+        }
+      } else if (!linkedIndividual || linkedIndividual.roleId !== filters.roleId) {
+        continue;
+      }
     }
 
     const confidenceEntry = getTopConfidence(record.record);
