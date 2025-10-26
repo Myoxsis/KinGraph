@@ -487,43 +487,40 @@ main.workspace {
 }
 
 .tree-view {
-  align-items: start;
-}
-
-.tree-view .workspace-primary {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: clamp(24px, 4vw, 40px);
 }
 
-.tree-sidebar {
-  position: sticky;
-  top: clamp(88px, 10vh, 128px);
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  min-width: 0;
-}
-
-.tree-controls {
-  text-align: left;
-}
-
-.tree-controls .control {
-  width: 100%;
+.tree-visualization-copy {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.tree-controls .card-actions {
-  justify-content: flex-start;
+.tree-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.tree-controls > button {
+  align-self: flex-start;
+}
+
+.tree-controls label {
+  font-weight: 600;
+}
+
+.tree-controls select {
+  width: min(320px, 100%);
 }
 
 .tree-visualization-header {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: clamp(20px, 3vw, 28px);
 }
 
 .tree-visualization-eyebrow {
@@ -544,12 +541,16 @@ main.workspace {
 @media (min-width: 1025px) {
   .tree-visualization-header {
     flex-direction: row;
-    align-items: flex-end;
+    align-items: flex-start;
     justify-content: space-between;
   }
 
-  .tree-visualization-header > div {
-    max-width: 360px;
+  .tree-visualization-header > * {
+    flex: 1 1 0;
+  }
+
+  .tree-controls {
+    max-width: 340px;
   }
 }
 
@@ -1780,6 +1781,10 @@ body.modal-open {
   --tree-card-role-color: rgba(108, 88, 60, 0.78);
   --tree-card-detail-color: rgba(86, 68, 45, 0.78);
   --tree-avatar-bg: rgba(255, 248, 230, 0.9);
+}
+
+.tree-person--interactive {
+  cursor: pointer;
 }
 
 .tree-person:hover {

@@ -76,6 +76,7 @@ export function initializeTreePage(): void {
   interface TreePersonOptions {
     relationship?: TreePersonRelationship;
     sex?: IndividualProfile["sex"] | null;
+    id?: string | null;
   }
 
   function createTreePersonElement(
@@ -94,6 +95,10 @@ export function initializeTreePage(): void {
     const sexClass = getSexClass(options.sex ?? null);
     if (sexClass) {
       classes.push(`tree-person--${sexClass}`);
+    }
+
+    if (options.id) {
+      classes.push("tree-person--interactive");
     }
 
     const wrapper = document.createElement("article");
@@ -162,6 +167,19 @@ export function initializeTreePage(): void {
       wrapper.appendChild(detailsWrapper);
     }
 
+    if (options.id) {
+      const personId = options.id;
+      wrapper.dataset.individualId = personId;
+      wrapper.addEventListener("dblclick", () => {
+        selectedTreeIndividualId = personId;
+        select.value = personId;
+        if (select.value !== personId) {
+          select.value = "";
+        }
+        renderTree();
+      });
+    }
+
     return wrapper;
   }
 
@@ -220,6 +238,15 @@ export function initializeTreePage(): void {
 
     if (treeMetric) {
       treeMetric.textContent = individualCount.toString();
+    }
+
+    if (!selectedTreeIndividualId) {
+      select.value = "";
+    } else {
+      select.value = selectedTreeIndividualId;
+      if (select.value !== selectedTreeIndividualId) {
+        select.value = "";
+      }
     }
 
     if (!latestState.individuals.length) {
@@ -309,6 +336,7 @@ export function initializeTreePage(): void {
 
       if (fatherName) {
         const fatherProfile = resolveProfileByName(fatherName);
+        const fatherStored = individualIndex.get(normalizeNameKey(fatherName));
         branches.appendChild(
           createGenealogyBranch(
             createTreePersonElement(
@@ -319,6 +347,7 @@ export function initializeTreePage(): void {
               {
                 relationship: "parent",
                 sex: fatherProfile?.sex ?? "M",
+                id: fatherStored?.id ?? null,
               },
             ),
             ["down"],
@@ -328,6 +357,7 @@ export function initializeTreePage(): void {
 
       if (motherName) {
         const motherProfile = resolveProfileByName(motherName);
+        const motherStored = individualIndex.get(normalizeNameKey(motherName));
         branches.appendChild(
           createGenealogyBranch(
             createTreePersonElement(
@@ -338,6 +368,7 @@ export function initializeTreePage(): void {
               {
                 relationship: "parent",
                 sex: motherProfile?.sex ?? "F",
+                id: motherStored?.id ?? null,
               },
             ),
             ["down"],
@@ -373,6 +404,7 @@ export function initializeTreePage(): void {
           {
             relationship: "focus",
             sex: mergedProfile.sex ?? null,
+            id: individual.id,
           },
         ),
         rootConnectors,
@@ -391,6 +423,7 @@ export function initializeTreePage(): void {
 
       for (const childName of mergedProfile.children) {
         const childProfile = resolveProfileByName(childName);
+        const childStored = individualIndex.get(normalizeNameKey(childName));
         branches.appendChild(
           createGenealogyBranch(
             createTreePersonElement(
@@ -401,6 +434,7 @@ export function initializeTreePage(): void {
               {
                 relationship: "child",
                 sex: childProfile?.sex ?? null,
+                id: childStored?.id ?? null,
               },
             ),
             ["up"],

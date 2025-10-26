@@ -153,39 +153,27 @@
               Explore a three-generation view for the individuals you have captured.
             </p>
 
-            <div class="workspace-grid tree-view">
-              <section class="workspace-primary">
-                <section class="workspace-section workspace-section--layer tree-visualization">
-                  <header class="tree-visualization-header">
-                    <div>
-                      <p class="tree-visualization-eyebrow">Focused individual</p>
-                      <h2>Three-generation view</h2>
-                    </div>
-                    <p class="supporting-text">
-                      A visual snapshot of parents, siblings, and children for the selected person.
-                    </p>
-                  </header>
-                  <div id="tree-container" class="tree-container"></div>
-                </section>
-              </section>
-              <aside class="workspace-secondary tree-sidebar" aria-label="Tree controls">
-                <section class="workspace-section workspace-section--layer workspace-section--stack tree-controls">
-                  <header>
-                    <h2>Choose focus</h2>
-                  </header>
+            <section class="workspace-section workspace-section--layer tree-visualization tree-view">
+              <header class="tree-visualization-header">
+                <div class="tree-visualization-copy">
+                  <p class="tree-visualization-eyebrow">Focused individual</p>
+                  <h2>Three-generation view</h2>
+                  <p class="supporting-text">
+                    A visual snapshot of parents, siblings, and children for the selected person.
+                  </p>
+                </div>
+                <div class="tree-controls" role="group" aria-labelledby="tree-controls-heading">
+                  <h2 id="tree-controls-heading">Choose focus</h2>
                   <p class="supporting-text">
                     Select an individual to populate the tree. You can quickly clear the selection to start over.
                   </p>
-                  <div class="control">
-                    <label for="tree-individual-select">Select individual</label>
-                    <select id="tree-individual-select"></select>
-                  </div>
-                  <div class="card-actions">
-                    <button type="button" id="tree-clear" class="button-secondary">Clear selection</button>
-                  </div>
-                </section>
-              </aside>
-            </div>
+                  <label for="tree-individual-select">Select individual</label>
+                  <select id="tree-individual-select"></select>
+                  <button type="button" id="tree-clear" class="button-secondary">Clear selection</button>
+                </div>
+              </header>
+              <div id="tree-container" class="tree-container"></div>
+            </section>
           </section>
         </main>
       </div>
