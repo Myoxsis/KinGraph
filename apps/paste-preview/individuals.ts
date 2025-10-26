@@ -14,6 +14,7 @@ import {
 import { formatTimestamp, getRecordSummary } from "./shared/utils";
 import { initializeWorkspaceSearch } from "./shared/search";
 import type { IndividualRecord } from "../../schema";
+import { generateIndividualGedcom } from "./shared/gedcom";
 
 const PROFILE_FIELD_KEYS = [
   "givenNames",
@@ -106,6 +107,7 @@ interface IndividualsElements {
   editRoleSelect: HTMLSelectElement;
   editSaveButton: HTMLButtonElement;
   deleteIndividualButton: HTMLButtonElement;
+  downloadGedcomButton: HTMLButtonElement;
   editFeedback: HTMLSpanElement | null;
   editModal: HTMLDivElement;
   editModalBackdrop: HTMLDivElement | null;
@@ -867,6 +869,7 @@ export function initializeIndividualsPage(): void {
     editRoleSelect,
     editSaveButton,
     deleteIndividualButton,
+    downloadGedcomButton,
     editFeedback,
     editModal,
     editModalBackdrop,
@@ -1638,6 +1641,7 @@ export function initializeIndividualsPage(): void {
     editRoleSelect.disabled = !hasSelection;
     editSaveButton.disabled = !hasSelection;
     deleteIndividualButton.disabled = !hasSelection;
+    downloadGedcomButton.disabled = !hasSelection;
 
     if (!selected) {
       editForm.reset();
@@ -1793,6 +1797,43 @@ export function initializeIndividualsPage(): void {
     }
   });
 
+  downloadGedcomButton.addEventListener("click", () => {
+    const selected = getSelectedIndividual();
+
+    if (!selected) {
+      return;
+    }
+
+    const documentText = generateIndividualGedcom(latestState, selected.id);
+
+    if (!documentText) {
+      if (editFeedback) {
+        editFeedback.textContent = "Unable to export GEDCOM for the selected individual.";
+      }
+      return;
+    }
+
+    try {
+      const blob = new Blob([documentText], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${buildGedcomFileName(selected.name)}.ged`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      if (editFeedback) {
+        editFeedback.textContent = "GEDCOM export generated.";
+      }
+    } catch (error) {
+      console.error("Failed to generate GEDCOM download", error);
+      if (editFeedback) {
+        editFeedback.textContent = "Unable to generate GEDCOM download.";
+      }
+    }
+  });
+
   profileSaveButton.addEventListener("click", async () => {
     const selected = getSelectedIndividual();
 
@@ -1870,6 +1911,20 @@ export function initializeIndividualsPage(): void {
   renderSelectedIndividual();
 }
 
+function buildGedcomFileName(name: string): string {
+  const normalized = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  if (normalized.length) {
+    return normalized.toLowerCase();
+  }
+
+  return "individual";
+}
+
 function getIndividualsElements(): IndividualsElements | null {
   const list = document.getElementById("individuals-list");
   const createForm = document.getElementById("create-individual-form");
@@ -1883,6 +1938,7 @@ function getIndividualsElements(): IndividualsElements | null {
   const editFeedback = document.getElementById("edit-individual-feedback");
   const editSaveButton = document.getElementById("save-individual-button");
   const deleteIndividualButton = document.getElementById("delete-individual-button");
+  const downloadGedcomButton = document.getElementById("download-gedcom-button");
   const editModal = document.getElementById("individual-edit-modal");
   const editModalBackdrop = document.getElementById("individual-edit-backdrop");
   const editModalClose = document.getElementById("close-individual-modal");
@@ -1907,6 +1963,7 @@ function getIndividualsElements(): IndividualsElements | null {
       editRoleSelect instanceof HTMLSelectElement &&
       editSaveButton instanceof HTMLButtonElement &&
       deleteIndividualButton instanceof HTMLButtonElement &&
+      downloadGedcomButton instanceof HTMLButtonElement &&
       editModal instanceof HTMLDivElement &&
       editModalClose instanceof HTMLButtonElement &&
       profileEditor instanceof HTMLDivElement &&
@@ -1930,6 +1987,7 @@ function getIndividualsElements(): IndividualsElements | null {
     editRoleSelect,
     editSaveButton,
     deleteIndividualButton,
+    downloadGedcomButton,
     editFeedback: editFeedback instanceof HTMLSpanElement ? editFeedback : null,
     editModal,
     editModalBackdrop: editModalBackdrop instanceof HTMLDivElement ? editModalBackdrop : null,

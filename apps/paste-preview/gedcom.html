@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>KinGraph Workbench — Tree</title>
+    <title>KinGraph Workbench — GEDCOM Viewer</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body data-page="tree">
+  <body data-page="gedcom">
     <div class="app-shell">
       <aside class="app-rail" aria-label="Workspace navigation">
         <a class="rail-logo" href="./index.html">
@@ -43,7 +43,7 @@
             <span class="rail-label">Individuals</span>
             <span class="rail-badge" id="nav-individual-count" aria-hidden="true">0</span>
           </a>
-          <a class="rail-link is-active" href="./tree.html" aria-current="page">
+          <a class="rail-link" href="./tree.html">
             <span class="rail-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
@@ -58,7 +58,7 @@
             </span>
             <span class="rail-label">Tree</span>
           </a>
-          <a class="rail-link" href="./gedcom.html">
+          <a class="rail-link is-active" href="./gedcom.html" aria-current="page">
             <span class="rail-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
@@ -127,73 +127,40 @@
           <div class="command-bar-primary">
             <div>
               <p class="command-bar-eyebrow">KinGraph Workbench</p>
-              <h1 class="command-title">Tree</h1>
+              <h1 class="command-title">GEDCOM Viewer</h1>
             </div>
             <div class="command-metrics">
               <span class="metric-chip" role="status" aria-live="polite">
-                <span class="metric-label">Individuals loaded</span>
-                <span class="metric-value" id="metric-tree-individuals">0</span>
-              </span>
-              <span class="metric-chip">
-                <span class="metric-label">Branches shown</span>
-                <span class="metric-value">—</span>
+                <span class="metric-label">Individuals included</span>
+                <span class="metric-value" id="gedcom-individual-count">0</span>
               </span>
             </div>
-          </div>
-          <form id="workspace-search-form" class="command-search" role="search" autocomplete="off">
-            <label class="visually-hidden" for="workspace-search">Search individuals</label>
-            <span class="command-search-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="m20 20-3.5-3.5m1.5-4.5a6 6 0 1 1-12 0 6 6 0 0 1 12 0Z"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </span>
-            <input type="search" id="workspace-search" name="search" placeholder="Search individuals" />
-            <button
-              type="button"
-              id="workspace-search-clear"
-              class="command-search-clear"
-              aria-label="Clear search"
-              hidden
-            >
-              <span aria-hidden="true">&times;</span>
-            </button>
-          </form>
-          <div class="command-actions">
-            <a class="command-button" href="#tree-container">View tree</a>
           </div>
         </header>
         <main class="workspace" id="main-content">
           <section class="workspace-content" aria-labelledby="workspace-description">
             <p class="workspace-description" id="workspace-description">
-              Explore a three-generation view for the individuals you have captured.
+              Generate a GEDCOM export of the individuals stored in this workspace for use with other genealogy tools.
             </p>
-
-            <section class="workspace-section workspace-section--layer tree-visualization tree-view">
-              <header class="tree-visualization-header">
-                <div class="tree-visualization-copy">
-                  <p class="tree-visualization-eyebrow">Focused individual</p>
-                  <h2>Three-generation view</h2>
-                  <p class="supporting-text">
-                    A visual snapshot of parents, siblings, and children for the selected person.
-                  </p>
-                </div>
-                <div class="tree-controls" role="group" aria-labelledby="tree-controls-heading">
-                  <h2 id="tree-controls-heading">Choose focus</h2>
-                  <p class="supporting-text">
-                    Select an individual to populate the tree. You can quickly clear the selection to start over.
-                  </p>
-                  <label for="tree-individual-select">Select individual</label>
-                  <select id="tree-individual-select"></select>
-                  <button type="button" id="tree-clear" class="button-secondary">Clear selection</button>
-                </div>
+            <section class="workspace-section workspace-section--layer workspace-section--stack">
+              <header>
+                <h2>GEDCOM export</h2>
               </header>
-              <div id="tree-container" class="tree-container"></div>
+              <div>
+                <p class="supporting-text">
+                  The document below refreshes automatically as your data changes. Copy it directly or download a .ged
+                  file to import into compatible software.
+                </p>
+              </div>
+              <div class="gedcom-viewer">
+                <label for="gedcom-output">GEDCOM document</label>
+                <textarea id="gedcom-output" readonly spellcheck="false"></textarea>
+              </div>
+              <div class="card-actions">
+                <button type="button" id="copy-gedcom-button">Copy GEDCOM</button>
+                <button type="button" id="gedcom-download-button" class="button-secondary">Download .ged</button>
+                <span id="gedcom-status" class="supporting-text" aria-live="polite"></span>
+              </div>
             </section>
           </section>
         </main>

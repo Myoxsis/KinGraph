@@ -2,8 +2,9 @@ import { initializeIndividualsPage } from "./individuals";
 import { initializeRecordsPage } from "./records";
 import { initializeSettingsPage } from "./settings";
 import { initializeTreePage } from "./tree";
+import { initializeGedcomPage } from "./gedcom";
 
-type PageName = "records" | "individuals" | "tree" | "settings";
+type PageName = "records" | "individuals" | "tree" | "settings" | "gedcom";
 
 function getPageName(): PageName {
   const value = document.body.dataset.page as PageName | undefined;
@@ -11,6 +12,7 @@ function getPageName(): PageName {
     case "individuals":
     case "tree":
     case "settings":
+    case "gedcom":
       return value;
     case "records":
     default:
@@ -32,6 +34,9 @@ switch (page) {
     break;
   case "settings":
     initializeSettingsPage();
+    break;
+  case "gedcom":
+    initializeGedcomPage();
     break;
   default:
     initializeRecordsPage();
