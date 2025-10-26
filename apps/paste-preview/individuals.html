@@ -159,7 +159,9 @@
           <header>
             <h2>Individuals</h2>
           </header>
-          <div id="individuals-list" class="individuals-list"></div>
+          <div class="table-wrapper">
+            <div id="individuals-list" class="individuals-list"></div>
+          </div>
         </section>
         <section class="panel">
           <header>
@@ -176,13 +178,25 @@
             </div>
           </form>
         </section>
-        <section class="panel">
-          <header>
-            <h2>Individual details</h2>
-          </header>
-          <p id="edit-individual-empty" class="supporting-text">
-            Select an individual to view and edit their saved details.
-          </p>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div id="individual-edit-modal" class="modal" hidden aria-hidden="true">
+      <div class="modal-backdrop" id="individual-edit-backdrop"></div>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="individual-edit-title">
+        <header class="modal-header">
+          <div>
+            <p class="modal-eyebrow">Individuals</p>
+            <h2 class="modal-title" id="individual-edit-title">Edit individual</h2>
+          </div>
+          <button type="button" class="modal-close" id="close-individual-modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </header>
+        <div class="modal-content">
           <form id="edit-individual-form" class="choice">
             <div class="control">
               <label for="edit-individual-name">Display name</label>
@@ -194,7 +208,6 @@
             </div>
             <div class="card-actions">
               <button type="submit" id="save-individual-button">Save changes</button>
-              <button type="button" id="clear-edit-selection" class="button-secondary">Clear selection</button>
               <span id="edit-individual-feedback" class="supporting-text" aria-live="polite"></span>
             </div>
           </form>
@@ -214,10 +227,7 @@
               <span id="profile-feedback" class="supporting-text" aria-live="polite"></span>
             </div>
           </div>
-        </section>
-            </section>
-          </section>
-        </main>
+        </div>
       </div>
     </div>
 
