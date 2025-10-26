@@ -1,167 +1,32 @@
-import React, { ReactNode, useMemo, useState } from "react";
+import React, { useMemo, useState, type ChangeEvent } from "react";
 import { extractIndividual } from "../extract";
 import { scoreConfidence } from "../confidence";
-import { highlight } from "../highlight";
 import type { IndividualRecord } from "../schema";
+import {
+  buildHighlightDocument,
+  formatDate,
+  formatEvent,
+  highlightJson,
+} from "./formatting/recordPreview";
+import { FieldConfidencePanel } from "./components/FieldConfidencePanel";
+import type { FieldRow } from "./components/FieldConfidenceTable";
+import { SourceInputColumn } from "./components/SourceInputColumn";
+import {
+  StructuredRecordPanel,
+  type RecordViewMode,
+} from "./components/StructuredRecordPanel";
+import type {
+  StructuredSection,
+  StructuredSectionItem,
+} from "./components/StructuredSections";
 
-interface FieldRow {
-  label: string;
-  value: string;
-  confidence?: number;
-}
-
-type DateFragment = IndividualRecord["birth"];
-
-interface StructuredSectionItem {
-  label: string;
-  content: ReactNode;
-}
-
-interface StructuredSection {
-  title: string;
-  items: StructuredSectionItem[];
-  badge?: string;
-}
-
-function escapeHtmlContent(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function highlightJson(json: string): string {
-  const escaped = escapeHtmlContent(json);
-  const jsonPattern =
-    /("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
-
-  return escaped.replace(jsonPattern, (match) => {
-    let cls = "text-slate-300";
-
-    if (/^".*":$/.test(match)) {
-      cls = "text-sky-400";
-    } else if (/^".*"$/.test(match)) {
-      cls = "text-emerald-300";
-    } else if (/true|false/.test(match)) {
-      cls = "text-orange-300";
-    } else if (/null/.test(match)) {
-      cls = "text-pink-300";
-    } else if (/^-?\d/.test(match)) {
-      cls = "text-amber-300";
-    }
-
-    return `<span class="${cls}">${match}</span>`;
-  });
-}
-
-function formatDate(fragment: DateFragment): string {
-  const { raw, year, month, day, approx } = fragment;
-
-  if (raw) {
-    return raw;
-  }
-
-  const parts: string[] = [];
-
-  if (year !== undefined || month !== undefined || day !== undefined) {
-    if (year !== undefined) {
-      parts.push(year.toString());
-    }
-
-    if (month !== undefined) {
-      parts.push(month.toString().padStart(2, "0"));
-    }
-
-    if (day !== undefined) {
-      parts.push(day.toString().padStart(2, "0"));
-    }
-  }
-
-  if (!parts.length) {
-    return "";
-  }
-
-  const formatted = parts.join("-");
-  return approx ? `~${formatted}` : formatted;
-}
-
-function formatEvent(fragment: DateFragment): string | null {
-  if (fragment.raw) {
-    const parts = [fragment.raw];
-
-    if (
-      fragment.place &&
-      !fragment.raw.toLowerCase().includes(fragment.place.toLowerCase())
-    ) {
-      parts.push(fragment.place);
-    }
-
-    return parts.join(" · ");
-  }
-
-  const parts: string[] = [];
-  const date = formatDate(fragment);
-
-  if (date) {
-    parts.push(date);
-  }
-
-  if (fragment.place) {
-    parts.push(fragment.place);
-  }
-
-  if (!parts.length) {
-    return null;
-  }
-
-  return parts.join(" · ");
-}
-
-function buildHighlightDocument(record: IndividualRecord): string {
-  const markedHtml = highlight(record.sourceHtml, record.provenance);
-
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      :root {
-        color-scheme: light dark;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-      body {
-        margin: 0;
-        padding: 1.5rem;
-        background: #ffffff;
-        color: #111827;
-      }
-      mark[data-field] {
-        background: rgba(250, 204, 21, 0.4);
-        border-radius: 0.25rem;
-        padding: 0 0.2em;
-        box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.35);
-      }
-      mark[data-field]::after {
-        content: attr(data-field);
-        display: inline-block;
-        margin-left: 0.35rem;
-        font-size: 0.65rem;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        color: rgba(120, 53, 15, 0.85);
-      }
-    </style>
-  </head>
-  <body>
-    ${markedHtml}
-  </body>
-</html>`;
-}
+const DEFAULT_HTML =
+  "<h1>Jane Doe</h1><p>Born about 1892 to Mary &amp; John.</p>";
 
 export default function PastePreview(): JSX.Element {
-  const [htmlInput, setHtmlInput] = useState("<h1>Jane Doe</h1><p>Born about 1892 to Mary &amp; John.</p>");
+  const [htmlInput, setHtmlInput] = useState(DEFAULT_HTML);
   const [showSources, setShowSources] = useState(false);
-  const [viewMode, setViewMode] = useState<"modular" | "json">("modular");
+  const [viewMode, setViewMode] = useState<RecordViewMode>("modular");
 
   const { record, error } = useMemo(() => {
     if (!htmlInput.trim()) {
@@ -181,10 +46,11 @@ export default function PastePreview(): JSX.Element {
     if (!record) {
       return {} as ReturnType<typeof scoreConfidence>;
     }
+
     return scoreConfidence(record);
   }, [record]);
 
-  const fieldRows: FieldRow[] = useMemo(() => {
+  const fieldRows = useMemo<FieldRow[]>(() => {
     if (!record) {
       return [];
     }
@@ -254,7 +120,7 @@ export default function PastePreview(): JSX.Element {
         label: "Residences",
         value: record.residences
           .map((res) =>
-            [res.raw, res.place, res.year?.toString()].filter(Boolean).join(" · ")
+            [res.raw, res.place, res.year?.toString()].filter(Boolean).join(" · "),
           )
           .join("\n"),
       });
@@ -373,19 +239,19 @@ export default function PastePreview(): JSX.Element {
     }
 
     const lifeEventItems: StructuredSectionItem[] = [];
-    const birth = formatEvent(record.birth);
-    if (birth) {
+    const birthEvent = formatEvent(record.birth);
+    if (birthEvent) {
       lifeEventItems.push({
         label: "Birth",
-        content: birth,
+        content: birthEvent,
       });
     }
 
-    const death = formatEvent(record.death);
-    if (death) {
+    const deathEvent = formatEvent(record.death);
+    if (deathEvent) {
       lifeEventItems.push({
         label: "Death",
-        content: death,
+        content: deathEvent,
       });
     }
 
@@ -443,25 +309,40 @@ export default function PastePreview(): JSX.Element {
     if (record.spouses.length) {
       relationshipsItems.push({
         label: "Spouses",
-        content: record.spouses.join(", "),
+        content: (
+          <ul className="list-disc space-y-1 pl-5 text-sm text-slate-200">
+            {record.spouses.map((spouse, index) => (
+              <li key={`${spouse}-${index}`}>{spouse}</li>
+            ))}
+          </ul>
+        ),
       });
     }
 
     if (record.children.length) {
       relationshipsItems.push({
         label: "Children",
-        content: record.children.join(", "),
-      });
-    }
-
-    if (record.siblings.length) {
-      relationshipsItems.push({
-        label: "Siblings",
-        content: record.siblings.join(", "),
+        content: (
+          <ul className="list-disc space-y-1 pl-5 text-sm text-slate-200">
+            {record.children.map((child, index) => (
+              <li key={`${child}-${index}`}>{child}</li>
+            ))}
+          </ul>
+        ),
       });
     }
 
     const contextItems: StructuredSectionItem[] = [];
+
+    if (record.residences.length) {
+      const latestResidence = record.residences[record.residences.length - 1];
+      if (latestResidence.place) {
+        contextItems.push({
+          label: "Last known residence",
+          content: latestResidence.place,
+        });
+      }
+    }
 
     if (record.occupation) {
       contextItems.push({
@@ -480,19 +361,10 @@ export default function PastePreview(): JSX.Element {
     if (record.notes) {
       contextItems.push({
         label: "Notes",
-        content: <p className="whitespace-pre-wrap text-sm text-slate-200">{record.notes}</p>,
-      });
-    }
-
-    if (record.sources.length) {
-      contextItems.push({
-        label: "Sources",
         content: (
-          <ul className="list-disc space-y-1 pl-5 text-sm text-slate-200">
-            {record.sources.map((source, index) => (
-              <li key={`${source}-${index}`}>{source}</li>
-            ))}
-          </ul>
+          <div className="whitespace-pre-wrap text-sm text-slate-200">
+            {record.notes}
+          </div>
         ),
       });
     }
@@ -505,7 +377,7 @@ export default function PastePreview(): JSX.Element {
         content: (
           <a
             href={record.sourceUrl}
-            className="text-sm text-sky-400 underline decoration-sky-400/50 decoration-dotted underline-offset-4 hover:text-sky-300"
+            className="text-sm text-sky-400 hover:text-sky-300"
             target="_blank"
             rel="noreferrer"
           >
@@ -515,11 +387,20 @@ export default function PastePreview(): JSX.Element {
       });
     }
 
+    if (record.sourceCitation) {
+      metadataItems.push({
+        label: "Citation",
+        content: record.sourceCitation,
+      });
+    }
+
     if (record.extractedAt) {
       const date = new Date(record.extractedAt);
       metadataItems.push({
         label: "Extracted",
-        content: isNaN(date.getTime()) ? record.extractedAt : date.toLocaleString(),
+        content: isNaN(date.getTime())
+          ? record.extractedAt
+          : date.toLocaleString(),
       });
     }
 
@@ -533,7 +414,9 @@ export default function PastePreview(): JSX.Element {
           <details className="group">
             <summary className="flex cursor-pointer items-center justify-between gap-2 rounded-md bg-slate-900/60 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-300">
               <span>View spans</span>
-              <span className="rounded bg-slate-800 px-2 py-0.5 text-[0.65rem] text-slate-400">{record.provenance.length}</span>
+              <span className="rounded bg-slate-800 px-2 py-0.5 text-[0.65rem] text-slate-400">
+                {record.provenance.length}
+              </span>
             </summary>
             <ul className="mt-3 space-y-2">
               {record.provenance.map((span, index) => (
@@ -541,9 +424,13 @@ export default function PastePreview(): JSX.Element {
                   key={`${span.field}-${span.start}-${index}`}
                   className="rounded-lg border border-slate-800 bg-slate-900/70 p-3"
                 >
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{span.field}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    {span.field}
+                  </p>
                   <p className="mt-1 text-sm text-slate-200">{span.text}</p>
-                  <p className="mt-2 text-xs text-slate-500">{span.start} – {span.end}</p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {span.start} – {span.end}
+                  </p>
                 </li>
               ))}
             </ul>
@@ -581,180 +468,36 @@ export default function PastePreview(): JSX.Element {
     return sections;
   }, [record]);
 
+  const handleHtmlChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    setHtmlInput(event.target.value);
+    setShowSources(false);
+  };
+
+  const toggleSources = () => {
+    setShowSources((prev) => !prev);
+  };
+
   return (
     <div className="flex flex-col gap-6 bg-slate-950 p-6 text-slate-100">
       <div className="grid gap-6 lg:grid-cols-2">
+        <SourceInputColumn
+          htmlInput={htmlInput}
+          onHtmlInputChange={handleHtmlChange}
+          onToggleSources={toggleSources}
+          showSources={showSources}
+          record={record}
+          highlightDocument={highlightDoc}
+        />
         <div className="flex flex-col gap-4">
-          <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Source HTML
-            </label>
-            <textarea
-              className="h-[24rem] w-full resize-y rounded-lg border border-slate-800 bg-slate-900/60 p-4 font-mono text-sm text-slate-200 shadow-inner outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50"
-              placeholder="Paste HTML here..."
-              value={htmlInput}
-              onChange={(event) => {
-                setHtmlInput(event.target.value);
-                setShowSources(false);
-              }}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowSources((prev) => !prev)}
-            disabled={!record}
-            className="inline-flex w-fit items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-          >
-            Highlight sources
-          </button>
-          {showSources && record && (
-            <div className="h-80 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
-              <iframe
-                title="Source preview"
-                className="h-full w-full"
-                srcDoc={highlightDoc}
-              />
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col gap-4">
-          <div className="rounded-xl border border-slate-800 bg-slate-900/70 shadow-lg">
-            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
-                Structured record
-              </h2>
-              {record && (
-                <div className="flex items-center gap-2">
-                  <span className="hidden rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-400 sm:inline-flex">
-                    {record.provenance.length} provenance span{record.provenance.length === 1 ? "" : "s"}
-                  </span>
-                  <div className="inline-flex rounded-lg bg-slate-800/70 p-0.5 text-xs text-slate-400">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("modular")}
-                      className={`rounded-md px-3 py-1 font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
-                        viewMode === "modular"
-                          ? "bg-slate-700 text-slate-100 shadow"
-                          : "hover:text-slate-200"
-                      }`}
-                    >
-                      Modular
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("json")}
-                      className={`rounded-md px-3 py-1 font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
-                        viewMode === "json"
-                          ? "bg-slate-700 text-slate-100 shadow"
-                          : "hover:text-slate-200"
-                      }`}
-                    >
-                      JSON
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="max-h-[22rem] overflow-auto p-4">
-              {error && (
-                <div className="rounded-lg border border-rose-500/50 bg-rose-500/10 p-3 text-sm text-rose-200">
-                  {error}
-                </div>
-              )}
-              {!error && !record && (
-                <p className="text-sm text-slate-400">
-                  Paste HTML into the left pane to see the extracted record.
-                </p>
-              )}
-              {!error && record && viewMode === "json" && (
-                <pre
-                  className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-slate-200"
-                  dangerouslySetInnerHTML={{ __html: highlightedJson }}
-                />
-              )}
-              {!error && record && viewMode === "modular" && (
-                <div className="flex flex-col gap-4">
-                  {structuredSections.length === 0 ? (
-                    <p className="text-sm text-slate-400">
-                      No structured fields were extracted from this record.
-                    </p>
-                  ) : (
-                    structuredSections.map((section, index) => (
-                      <details
-                        key={section.title}
-                        className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900/80"
-                        defaultOpen={index === 0}
-                      >
-                        <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-semibold uppercase tracking-wider text-slate-300">
-                          <span>{section.title}</span>
-                          {section.badge && (
-                            <span className="rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-400">
-                              {section.badge}
-                            </span>
-                          )}
-                        </summary>
-                        <div className="border-t border-slate-800 px-4 py-3">
-                          <dl className="grid gap-4">
-                            {section.items.map((item) => (
-                              <div key={`${section.title}-${item.label}`} className="space-y-1">
-                                <dt className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                                  {item.label}
-                                </dt>
-                                <dd className="text-sm text-slate-200">{item.content}</dd>
-                              </div>
-                            ))}
-                          </dl>
-                        </div>
-                      </details>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-900/70 shadow-lg">
-            <div className="border-b border-slate-800 px-4 py-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
-                Field confidence
-              </h2>
-            </div>
-            <div className="max-h-[22rem] overflow-auto">
-              {fieldRows.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-slate-400">No extracted fields yet.</p>
-              ) : (
-                <table className="min-w-full divide-y divide-slate-800 text-sm">
-                  <tbody className="divide-y divide-slate-800">
-                    {fieldRows.map((row) => {
-                      const percent = row.confidence !== undefined ? Math.round(row.confidence * 100) : null;
-                      return (
-                        <tr key={`${row.label}-${row.value}`} className="align-top">
-                          <th className="w-36 whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                            {row.label}
-                          </th>
-                          <td className="px-4 py-3">
-                            <div className="whitespace-pre-wrap text-sm text-slate-200">{row.value}</div>
-                            <div className="mt-2 flex items-center gap-2">
-                              <div className="h-2 w-full rounded-full bg-slate-800">
-                                {percent !== null && (
-                                  <div
-                                    className="h-2 rounded-full bg-emerald-400 transition-all"
-                                    style={{ width: `${percent}%` }}
-                                  />
-                                )}
-                              </div>
-                              <span className="text-xs text-slate-400">
-                                {percent !== null ? `${percent}%` : "—"}
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+          <StructuredRecordPanel
+            record={record}
+            sections={structuredSections}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            highlightedJson={highlightedJson}
+            error={error}
+          />
+          <FieldConfidencePanel rows={fieldRows} />
         </div>
       </div>
     </div>
