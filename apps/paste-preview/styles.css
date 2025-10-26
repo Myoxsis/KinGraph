@@ -1209,6 +1209,226 @@ body.modal-open {
   color: var(--text-muted);
 }
 
+.genealogy-tree {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 4vw, 48px);
+  padding: clamp(16px, 3vw, 32px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.genealogy-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.genealogy-heading span {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.genealogy-level {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: clamp(16px, 4vw, 48px);
+  align-items: stretch;
+  justify-items: stretch;
+}
+
+.genealogy-level > * {
+  min-width: 0;
+}
+
+.genealogy-level--top-line,
+.genealogy-level--bottom-line {
+  padding-block: 12px;
+}
+
+.genealogy-level--top-line::before,
+.genealogy-level--bottom-line::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 2px;
+  height: clamp(18px, 3vw, 28px);
+  background: var(--border-strong);
+  transform: translateX(-50%);
+}
+
+.genealogy-level--top-line::before {
+  top: 0;
+}
+
+.genealogy-level--bottom-line::after {
+  bottom: 0;
+}
+
+.genealogy-branches {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: clamp(16px, 4vw, 48px);
+  align-items: stretch;
+  justify-items: center;
+  min-height: clamp(28px, 5vw, 52px);
+}
+
+.genealogy-branch {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.genealogy-branch::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--border-strong);
+}
+
+.genealogy-branch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--border-strong);
+}
+
+.genealogy-connector-up,
+.genealogy-connector-down {
+  position: relative;
+}
+
+.genealogy-connector-up::before {
+  content: "";
+  position: absolute;
+  top: calc(-1 * clamp(18px, 3vw, 28px));
+  left: 50%;
+  width: 2px;
+  height: clamp(18px, 3vw, 28px);
+  transform: translateX(-50%);
+  background: var(--border-strong);
+}
+
+.genealogy-connector-down::after {
+  content: "";
+  position: absolute;
+  bottom: calc(-1 * clamp(18px, 3vw, 28px));
+  left: 50%;
+  width: 2px;
+  height: clamp(18px, 3vw, 28px);
+  transform: translateX(-50%);
+  background: var(--border-strong);
+}
+
+.tree-person,
+.tree-empty {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+}
+
+.tree-person strong {
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.tree-lifespan {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.tree-notes {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-radius: calc(var(--radius-sm) - 2px);
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+}
+
+.tree-empty {
+  justify-content: center;
+  align-items: center;
+  color: var(--text-muted);
+  font-style: italic;
+  border-style: dashed;
+  box-shadow: none;
+}
+
+@media (max-width: 960px) {
+  .genealogy-level,
+  .genealogy-branches {
+    grid-auto-columns: minmax(180px, 1fr);
+  }
+
+  .genealogy-branch::after {
+    left: 20%;
+    right: 20%;
+  }
+}
+
+@media (max-width: 720px) {
+  .genealogy-tree {
+    padding: 16px;
+    gap: 24px;
+  }
+
+  .genealogy-level,
+  .genealogy-branches {
+    grid-auto-flow: row;
+    grid-auto-columns: unset;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
+  }
+
+  .genealogy-level--top-line::before,
+  .genealogy-level--bottom-line::after {
+    left: 24px;
+    transform: none;
+  }
+
+  .genealogy-branch::after {
+    display: none;
+  }
+
+  .genealogy-branch::before {
+    left: 24px;
+    transform: none;
+  }
+
+  .genealogy-connector-up::before,
+  .genealogy-connector-down::after {
+    left: 24px;
+    transform: none;
+  }
+}
+
 @media (max-width: 768px) {
   .command-bar {
     padding: 20px var(--page-padding);
