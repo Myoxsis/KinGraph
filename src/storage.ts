@@ -1,6 +1,7 @@
 import type { IndividualRecord } from "../schema";
 import { TEMPLATE_PROFESSIONS } from "../professions";
 import { TEMPLATE_PLACES, type PlaceCategory } from "../places";
+import { TEMPLATE_INDIVIDUAL_ROLES } from "../roles";
 
 export interface StoredProfessionDefinition {
   id: string;
@@ -15,6 +16,13 @@ export interface StoredPlaceDefinition {
   label: string;
   aliases: string[];
   category?: PlaceCategory;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoredRoleDefinition {
+  id: string;
+  label: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,6 +52,7 @@ export interface StoredIndividual {
   id: string;
   name: string;
   notes: string;
+  roleId: string | null;
   profile: IndividualProfile;
   profileUpdatedAt: string;
   createdAt: string;
@@ -63,13 +72,14 @@ export interface PersistedState {
   records: StoredRecord[];
   professions: StoredProfessionDefinition[];
   places: StoredPlaceDefinition[];
+  roles: StoredRoleDefinition[];
 }
 
 type StateListener = (state: PersistedState) => void;
 
 const DB_NAME = "kingraph.app.data";
-const DB_VERSION = 1;
-const STORE_NAMES = ["individuals", "records", "professions", "places"] as const;
+const DB_VERSION = 2;
+const STORE_NAMES = ["individuals", "records", "professions", "places", "roles"] as const;
 type StoreName = (typeof STORE_NAMES)[number];
 
 const defaultState: PersistedState = createDefaultState();
@@ -334,6 +344,7 @@ async function writeToDatabase(next: PersistedState): Promise<void> {
   const recordsStore = tx.objectStore("records");
   const professionsStore = tx.objectStore("professions");
   const placesStore = tx.objectStore("places");
+  const rolesStore = tx.objectStore("roles");
 
   try {
     await requestToPromise(individualsStore.clear());
@@ -354,6 +365,11 @@ async function writeToDatabase(next: PersistedState): Promise<void> {
     await requestToPromise(placesStore.clear());
     for (const place of next.places) {
       await requestToPromise(placesStore.put(place));
+    }
+
+    await requestToPromise(rolesStore.clear());
+    for (const role of next.roles) {
+      await requestToPromise(rolesStore.put(role));
     }
 
     await transactionDone(tx);
@@ -378,13 +394,15 @@ async function loadPersistedState(): Promise<Partial<PersistedState>> {
   const recordsStore = tx.objectStore("records");
   const professionsStore = tx.objectStore("professions");
   const placesStore = tx.objectStore("places");
+  const rolesStore = tx.objectStore("roles");
 
   const completion = transactionDone(tx);
-  const [individuals, records, professions, places] = await Promise.all([
+  const [individuals, records, professions, places, roles] = await Promise.all([
     requestToPromise(individualsStore.getAll()),
     requestToPromise(recordsStore.getAll()),
     requestToPromise(professionsStore.getAll()),
     requestToPromise(placesStore.getAll()),
+    requestToPromise(rolesStore.getAll()),
   ]);
   await completion;
 
@@ -401,6 +419,9 @@ async function loadPersistedState(): Promise<Partial<PersistedState>> {
   if (places.length) {
     persisted.places = places as StoredPlaceDefinition[];
   }
+  if (roles.length) {
+    persisted.roles = roles as StoredRoleDefinition[];
+  }
 
   return persisted;
 }
@@ -411,9 +432,10 @@ async function initialize(): Promise<void> {
     const normalized = normalizeState(persisted);
     const seededProfessions = !("professions" in persisted);
     const seededPlaces = !("places" in persisted);
+    const seededRoles = !("roles" in persisted);
     state = normalized;
 
-    if (seededProfessions || seededPlaces) {
+    if (seededProfessions || seededPlaces || seededRoles) {
       try {
         await writeToDatabase(state);
       } catch (error) {
@@ -457,6 +479,9 @@ function cloneState(value: PersistedState): PersistedState {
       ...place,
       aliases: [...place.aliases],
     })),
+    roles: value.roles.map((role) => ({
+      ...role,
+    })),
   };
 }
 
@@ -467,64 +492,92 @@ function normalizeState(value: Partial<PersistedState>): PersistedState {
   const professions = hasProfessionData ? (value.professions as StoredProfessionDefinition[]) : [];
   const hasPlaceData = Array.isArray(value.places);
   const places = hasPlaceData ? (value.places as StoredPlaceDefinition[]) : [];
+  const hasRoleData = Array.isArray(value.roles);
+  const roles = hasRoleData ? (value.roles as StoredRoleDefinition[]) : [];
+
+  const normalizedRoles = roles
+    .filter((item): item is StoredRoleDefinition =>
+      Boolean(item && typeof item.id === "string" && typeof item.label === "string"),
+    )
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      createdAt: item.createdAt ?? new Date().toISOString(),
+      updatedAt: item.updatedAt ?? item.createdAt ?? new Date().toISOString(),
+    }));
+
+  const roleIds = new Set(normalizedRoles.map((role) => role.id));
+
+  const normalizedIndividuals = individuals
+    .filter((item): item is StoredIndividual =>
+      Boolean(item && typeof item.id === "string" && typeof item.name === "string"),
+    )
+    .map((item) => {
+      const createdAt = item.createdAt ?? new Date().toISOString();
+      const updatedAt = item.updatedAt ?? createdAt;
+      const profileSource = (item as { profile?: Partial<IndividualProfile> }).profile;
+      const profile = normalizeProfile(profileSource);
+      const profileUpdatedAt = (item as { profileUpdatedAt?: string }).profileUpdatedAt ?? updatedAt ?? createdAt;
+      const rawRoleId = typeof (item as { roleId?: unknown }).roleId === "string"
+        ? ((item as { roleId?: string }).roleId ?? null)
+        : null;
+      const roleId = rawRoleId && roleIds.has(rawRoleId) ? rawRoleId : null;
+
+      return {
+        id: item.id,
+        name: item.name,
+        notes: typeof item.notes === "string" ? item.notes : "",
+        roleId,
+        profile,
+        profileUpdatedAt,
+        createdAt,
+        updatedAt,
+      } satisfies StoredIndividual;
+    });
+
+  const normalizedRecords = records
+    .filter((item): item is StoredRecord =>
+      Boolean(item && typeof item.id === "string" && typeof item.individualId === "string" && item.record),
+    )
+    .map((item) => ({
+      id: item.id,
+      individualId: item.individualId,
+      createdAt: item.createdAt ?? new Date().toISOString(),
+      summary: item.summary ?? "",
+      record: item.record,
+    }));
+
+  const normalizedProfessions = professions
+    .filter((item): item is StoredProfessionDefinition =>
+      Boolean(item && typeof item.id === "string" && typeof item.label === "string"),
+    )
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      aliases: normalizeAliases(Array.isArray(item.aliases) ? item.aliases : undefined),
+      createdAt: item.createdAt ?? new Date().toISOString(),
+      updatedAt: item.updatedAt ?? item.createdAt ?? new Date().toISOString(),
+    }));
+
+  const normalizedPlaces = places
+    .filter((item): item is StoredPlaceDefinition =>
+      Boolean(item && typeof item.id === "string" && typeof item.label === "string"),
+    )
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      aliases: normalizeAliases(Array.isArray(item.aliases) ? item.aliases : undefined),
+      category: item.category,
+      createdAt: item.createdAt ?? new Date().toISOString(),
+      updatedAt: item.updatedAt ?? item.createdAt ?? new Date().toISOString(),
+    }));
 
   const normalized: PersistedState = {
-    individuals: individuals
-      .filter((item): item is StoredIndividual =>
-        Boolean(item && typeof item.id === "string" && typeof item.name === "string"),
-      )
-      .map((item) => {
-        const createdAt = item.createdAt ?? new Date().toISOString();
-        const updatedAt = item.updatedAt ?? createdAt;
-        const profileSource = (item as { profile?: Partial<IndividualProfile> }).profile;
-        const profile = normalizeProfile(profileSource);
-        const profileUpdatedAt =
-          (item as { profileUpdatedAt?: string }).profileUpdatedAt ?? updatedAt ?? createdAt;
-
-        return {
-          id: item.id,
-          name: item.name,
-          notes: typeof item.notes === "string" ? item.notes : "",
-          profile,
-          profileUpdatedAt,
-          createdAt,
-          updatedAt,
-        } satisfies StoredIndividual;
-      }),
-    records: records
-      .filter((item): item is StoredRecord =>
-        Boolean(item && typeof item.id === "string" && typeof item.individualId === "string" && item.record),
-      )
-      .map((item) => ({
-        id: item.id,
-        individualId: item.individualId,
-        createdAt: item.createdAt ?? new Date().toISOString(),
-        summary: item.summary ?? "",
-        record: item.record,
-      })),
-    professions: professions
-      .filter((item): item is StoredProfessionDefinition =>
-        Boolean(item && typeof item.id === "string" && typeof item.label === "string"),
-      )
-      .map((item) => ({
-        id: item.id,
-        label: item.label,
-        aliases: normalizeAliases(Array.isArray(item.aliases) ? item.aliases : undefined),
-        createdAt: item.createdAt ?? new Date().toISOString(),
-        updatedAt: item.updatedAt ?? item.createdAt ?? new Date().toISOString(),
-      })),
-    places: places
-      .filter((item): item is StoredPlaceDefinition =>
-        Boolean(item && typeof item.id === "string" && typeof item.label === "string"),
-      )
-      .map((item) => ({
-        id: item.id,
-        label: item.label,
-        aliases: normalizeAliases(Array.isArray(item.aliases) ? item.aliases : undefined),
-        category: item.category,
-        createdAt: item.createdAt ?? new Date().toISOString(),
-        updatedAt: item.updatedAt ?? item.createdAt ?? new Date().toISOString(),
-      })),
+    individuals: normalizedIndividuals,
+    records: normalizedRecords,
+    professions: normalizedProfessions,
+    places: normalizedPlaces,
+    roles: normalizedRoles,
   };
 
   if (!normalized.professions.length && !hasProfessionData) {
@@ -535,6 +588,16 @@ function normalizeState(value: Partial<PersistedState>): PersistedState {
     normalized.places = seedPlaces();
   }
 
+  if (!normalized.roles.length && !hasRoleData) {
+    normalized.roles = seedIndividualRoles();
+  }
+
+  const refreshedRoleIds = new Set(normalized.roles.map((role) => role.id));
+  normalized.individuals = normalized.individuals.map((individual) => ({
+    ...individual,
+    roleId: individual.roleId && refreshedRoleIds.has(individual.roleId) ? individual.roleId : null,
+  }));
+
   return normalized;
 }
 
@@ -544,6 +607,7 @@ function createDefaultState(): PersistedState {
     records: [],
     professions: seedProfessions(),
     places: seedPlaces(),
+    roles: seedIndividualRoles(),
   };
 }
 
@@ -574,6 +638,18 @@ function seedPlaces(): StoredPlaceDefinition[] {
   });
 }
 
+function seedIndividualRoles(): StoredRoleDefinition[] {
+  return TEMPLATE_INDIVIDUAL_ROLES.map((definition) => {
+    const timestamp = new Date().toISOString();
+    return {
+      id: generateId(),
+      label: definition.label,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    } satisfies StoredRoleDefinition;
+  });
+}
+
 function normalizeAliases(aliases: readonly string[] | undefined): string[] {
   return Array.from(
     new Set((aliases ?? []).map((alias) => alias.trim()).filter((alias) => alias.length > 0)),
@@ -586,6 +662,19 @@ function generateId(): string {
   }
 
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function resolveRoleId(roleId: string | null | undefined): string | null {
+  if (typeof roleId !== "string") {
+    return null;
+  }
+
+  const trimmed = roleId.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return state.roles.some((role) => role.id === trimmed) ? trimmed : null;
 }
 
 function emit(): void {
@@ -622,13 +711,18 @@ export function subscribe(listener: StateListener): () => void {
   };
 }
 
-export async function createIndividual(name: string): Promise<StoredIndividual> {
+export async function createIndividual(
+  name: string,
+  options: { roleId?: string | null } = {},
+): Promise<StoredIndividual> {
   await initialization;
+  const roleId = resolveRoleId(options.roleId ?? null);
   const now = new Date().toISOString();
   const individual: StoredIndividual = {
     id: generateId(),
     name,
     notes: "",
+    roleId,
     profile: createEmptyProfile(),
     profileUpdatedAt: now,
     createdAt: now,
@@ -642,7 +736,7 @@ export async function createIndividual(name: string): Promise<StoredIndividual> 
 }
 
 export async function updateIndividual(
-  options: { id: string; name?: string; notes?: string },
+  options: { id: string; name?: string; notes?: string; roleId?: string | null },
 ): Promise<StoredIndividual | null> {
   await initialization;
   const next = cloneState(state);
@@ -652,16 +746,37 @@ export async function updateIndividual(
     return null;
   }
 
+  let changed = false;
+
   if (typeof options.name !== "undefined") {
     const trimmedName = options.name.trim();
     if (!trimmedName) {
       throw new Error("Individual name cannot be empty.");
     }
-    target.name = trimmedName;
+    if (target.name !== trimmedName) {
+      target.name = trimmedName;
+      changed = true;
+    }
   }
 
   if (typeof options.notes !== "undefined") {
-    target.notes = options.notes.trim();
+    const trimmedNotes = options.notes.trim();
+    if (target.notes !== trimmedNotes) {
+      target.notes = trimmedNotes;
+      changed = true;
+    }
+  }
+
+  if (typeof options.roleId !== "undefined") {
+    const normalizedRoleId = resolveRoleId(options.roleId ?? null);
+    if (target.roleId !== normalizedRoleId) {
+      target.roleId = normalizedRoleId;
+      changed = true;
+    }
+  }
+
+  if (!changed) {
+    return target;
   }
 
   target.updatedAt = new Date().toISOString();
@@ -803,6 +918,65 @@ export async function deletePlaceDefinition(id: string): Promise<void> {
   }
 
   next.places.splice(index, 1);
+  await commit(next);
+}
+
+export async function saveIndividualRoleDefinition(options: {
+  id?: string;
+  label: string;
+}): Promise<StoredRoleDefinition> {
+  await initialization;
+  const label = options.label.trim();
+  if (!label) {
+    throw new Error("Role label cannot be empty.");
+  }
+
+  const next = cloneState(state);
+  const timestamp = new Date().toISOString();
+  let stored: StoredRoleDefinition | undefined;
+
+  if (options.id) {
+    stored = next.roles.find((item) => item.id === options.id);
+
+    if (stored) {
+      stored.label = label;
+      stored.updatedAt = timestamp;
+    }
+  }
+
+  if (!stored) {
+    stored = {
+      id: options.id ?? generateId(),
+      label,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    } satisfies StoredRoleDefinition;
+    next.roles.push(stored);
+  }
+
+  await commit(next);
+  return stored;
+}
+
+export async function deleteIndividualRoleDefinition(id: string): Promise<void> {
+  await initialization;
+  const next = cloneState(state);
+  const index = next.roles.findIndex((item) => item.id === id);
+
+  if (index === -1) {
+    return;
+  }
+
+  next.roles.splice(index, 1);
+
+  const now = new Date().toISOString();
+  for (const individual of next.individuals) {
+    if (individual.roleId === id) {
+      individual.roleId = null;
+      individual.updatedAt = now;
+    }
+  }
+
   await commit(next);
 }
 

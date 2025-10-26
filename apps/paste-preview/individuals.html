@@ -175,6 +175,12 @@
                       <label for="create-individual-name">Display name</label>
                       <input type="text" id="create-individual-name" required />
                     </div>
+                    <div class="control">
+                      <label for="create-individual-role">Role</label>
+                      <select id="create-individual-role">
+                        <option value="">No role assigned</option>
+                      </select>
+                    </div>
                     <div class="card-actions">
                       <button type="submit">Create</button>
                       <span id="individuals-feedback" class="supporting-text" aria-live="polite"></span>
@@ -200,17 +206,23 @@
             <span aria-hidden="true">&times;</span>
           </button>
         </header>
-        <div class="modal-content">
-          <form id="edit-individual-form" class="choice">
-            <div class="control">
-              <label for="edit-individual-name">Display name</label>
-              <input type="text" id="edit-individual-name" required />
-            </div>
-            <div class="control">
-              <label for="edit-individual-notes">Notes</label>
-              <textarea id="edit-individual-notes" rows="4" placeholder="Add context or reminders"></textarea>
-            </div>
-            <div class="card-actions">
+            <div class="modal-content">
+              <form id="edit-individual-form" class="choice">
+                <div class="control">
+                  <label for="edit-individual-name">Display name</label>
+                  <input type="text" id="edit-individual-name" required />
+                </div>
+                <div class="control">
+                  <label for="edit-individual-role">Role</label>
+                  <select id="edit-individual-role">
+                    <option value="">No role assigned</option>
+                  </select>
+                </div>
+                <div class="control">
+                  <label for="edit-individual-notes">Notes</label>
+                  <textarea id="edit-individual-notes" rows="4" placeholder="Add context or reminders"></textarea>
+                </div>
+                <div class="card-actions">
               <button type="submit" id="save-individual-button">Save changes</button>
               <span id="edit-individual-feedback" class="supporting-text" aria-live="polite"></span>
             </div>

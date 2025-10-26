@@ -121,6 +121,7 @@
           </div>
           <div class="command-actions">
             <a class="command-button" href="#profession-form">Manage professions</a>
+            <a class="command-button" href="#role-form">Manage roles</a>
             <a class="command-button command-button--primary" href="#export-data">Export data</a>
           </div>
         </header>
@@ -173,6 +174,24 @@
                     <span id="profession-feedback" class="supporting-text" aria-live="polite"></span>
                   </form>
                   <div id="profession-list" class="settings-list"></div>
+                </section>
+                <section class="workspace-section workspace-section--layer">
+                  <header>
+                    <h2>Individual roles</h2>
+                  </header>
+                  <p class="supporting-text">Define the roles available when categorizing individuals.</p>
+                  <form id="role-form" class="settings-form">
+                    <div class="control">
+                      <label for="role-label">Label</label>
+                      <input type="text" id="role-label" required />
+                    </div>
+                    <div class="card-actions">
+                      <button type="submit" id="role-submit">Save role</button>
+                      <button type="button" id="role-cancel" class="button-secondary" hidden>Cancel edit</button>
+                    </div>
+                    <span id="role-feedback" class="supporting-text" aria-live="polite"></span>
+                  </form>
+                  <div id="role-list" class="settings-list"></div>
                 </section>
               </section>
 
