@@ -34,6 +34,24 @@ interface SampleSnippet {
   html: string;
 }
 
+interface RecordFilterCriteria {
+  search: string;
+  individualId: string;
+  startDate: string;
+  endDate: string;
+  minConfidence: number;
+}
+
+const UNLINKED_FILTER_VALUE = "__unlinked__";
+
+const DEFAULT_FILTERS: RecordFilterCriteria = {
+  search: "",
+  individualId: "",
+  startDate: "",
+  endDate: "",
+  minConfidence: 0,
+};
+
 type ExtractionTrigger = "auto" | "manual" | "sample" | "load" | "reset";
 
 interface RecordsElements {
@@ -209,6 +227,7 @@ export function initializeRecordsPage(): void {
   let autoExtractEnabled = true;
   let pendingExtraction: number | null = null;
   let lastExtractionTimestamp: string | null = null;
+  let currentFilters: RecordFilterCriteria = { ...DEFAULT_FILTERS };
 
   function buildExtractOptions(): ExtractOptions {
     return {
@@ -914,6 +933,8 @@ export function initializeRecordsPage(): void {
 
     if (button.dataset.action === "reset-filters") {
       recordsFiltersForm.reset();
+      currentFilters = readFiltersFromControls();
+      renderSavedRecords(latestState, currentFilters);
       return;
     }
 
@@ -1024,6 +1045,15 @@ export function initializeRecordsPage(): void {
   saveModeNew.addEventListener("change", updateSavePanel);
   saveModeExisting.addEventListener("change", updateSavePanel);
 
+  recordsFiltersForm.addEventListener("input", () => {
+    applyFilters(readFiltersFromControls());
+  });
+
+  recordsFiltersForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    applyFilters(readFiltersFromControls());
+  });
+
   saveForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
@@ -1085,6 +1115,8 @@ export function initializeRecordsPage(): void {
       setFeedback("Unable to save record. Please try again.");
     }
   });
+
+  currentFilters = readFiltersFromControls();
 
   subscribe((state) => {
     latestState = state;
