@@ -1137,8 +1137,22 @@ export function initializeRecordsPage(): void {
 
     let individualId: string | null = null;
     let individualName = "";
+    let saveAsUnlinked = false;
 
-    if (saveModeExisting.checked && !saveModeExisting.disabled) {
+    if (isProcessingImportQueue) {
+      const [topCandidate] = buildMatchCandidates(
+        currentRecord,
+        latestState.individuals,
+        latestState.records,
+      );
+
+      if (topCandidate && topCandidate.score >= AUTO_MATCH_THRESHOLD) {
+        individualId = topCandidate.individual.id;
+        individualName = topCandidate.individual.name;
+      } else {
+        saveAsUnlinked = true;
+      }
+    } else if (saveModeExisting.checked && !saveModeExisting.disabled) {
       const selected = existingIndividualSelect.value;
 
       if (selected) {
@@ -1148,7 +1162,7 @@ export function initializeRecordsPage(): void {
       }
     }
 
-    if (!individualId) {
+    if (!saveAsUnlinked && !individualId) {
       const providedName = newIndividualInput.value.trim();
       const preferredName = providedName || suggestedName || getSuggestedIndividualName(currentRecord);
       const fallbackName = preferredName || `Imported individual ${rowIndex}`;
@@ -1159,18 +1173,30 @@ export function initializeRecordsPage(): void {
       latestState = getState();
     }
 
-    const summary = getRecordSummary(currentRecord);
-    await createRecord({ individualId, summary, record: currentRecord });
-    latestState = getState();
+    const resolvedIndividualId = saveAsUnlinked ? "" : individualId ?? "";
 
-    if (saveModeNew.checked) {
-      saveModeExisting.checked = true;
-      saveModeNew.checked = false;
+    if (!saveAsUnlinked && !resolvedIndividualId) {
+      throw new Error("Unable to determine individual for import.");
     }
 
-    existingIndividualSelect.value = individualId;
+    const summary = getRecordSummary(currentRecord);
+    await createRecord({ individualId: resolvedIndividualId, summary, record: currentRecord });
+    latestState = getState();
+
+    if (!saveAsUnlinked) {
+      if (saveModeNew.checked) {
+        saveModeExisting.checked = true;
+        saveModeNew.checked = false;
+      }
+
+      existingIndividualSelect.value = resolvedIndividualId;
+      setFeedback(`Saved CSV row ${rowIndex} for ${individualName}.`);
+    } else {
+      existingIndividualSelect.value = "";
+      setFeedback(`Saved CSV row ${rowIndex} as an unlinked record.`);
+    }
+
     updateSavePanel();
-    setFeedback(`Saved CSV row ${rowIndex} for ${individualName}.`);
   }
   function updateCharCount(): void {
     const length = htmlInput.value.length;
