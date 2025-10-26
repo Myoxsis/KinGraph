@@ -29,33 +29,12 @@ interface FieldRow {
   confidence?: number;
 }
 
-interface RecordFilterCriteria {
-  search: string;
-  individualId: string;
-  startDate: string;
-  endDate: string;
-  minConfidence: number;
+interface SampleSnippet {
+  label: string;
+  html: string;
 }
 
-const DEFAULT_FILTERS: RecordFilterCriteria = {
-  search: "",
-  individualId: "",
-  startDate: "",
-  endDate: "",
-  minConfidence: 0,
-};
-
-const UNLINKED_FILTER_VALUE = "__unlinked__";
-
-const CONFIDENCE_LABELS: Record<string, string> = {
-  givenNames: "Given names",
-  surname: "Surname",
-  maidenName: "Maiden name",
-  "birth.date": "Birth date",
-  "death.date": "Death date",
-  "parents.father": "Father",
-  "parents.mother": "Mother",
-};
+type ExtractionTrigger = "auto" | "manual" | "sample" | "load" | "reset";
 
 interface RecordsElements {
   htmlInput: HTMLTextAreaElement;
@@ -64,8 +43,14 @@ interface RecordsElements {
   confidenceList: HTMLDivElement;
   toggleSourcesButton: HTMLButtonElement;
   reextractButton: HTMLButtonElement;
+  clearInputButton: HTMLButtonElement;
   previewFrame: HTMLIFrameElement;
   provenanceCount: HTMLSpanElement;
+  sampleChipContainer: HTMLDivElement;
+  autoExtractToggle: HTMLInputElement;
+  charCount: HTMLSpanElement;
+  lastRunStatus: HTMLSpanElement;
+  lastRunFooter: HTMLTimeElement;
   saveForm: HTMLFormElement;
   saveModeNew: HTMLInputElement;
   saveModeExisting: HTMLInputElement;
@@ -86,6 +71,27 @@ interface RecordsElements {
 }
 
 const DEFAULT_HTML = "<h1>Jane Doe</h1><p>Born about 1892 to Mary &amp; John.</p>";
+const SAMPLE_SNIPPETS: SampleSnippet[] = [
+  {
+    label: "Default sample",
+    html: DEFAULT_HTML,
+  },
+  {
+    label: "Birth register",
+    html:
+      '<article><h2>Birth Register</h2><p>Infant: <strong>William Carter</strong></p><p>Born 3 Mar 1902 in Boston, Suffolk, Massachusetts.</p><p>Parents listed as Thomas Carter &amp; Eleanor Lewis.</p></article>',
+  },
+  {
+    label: "Marriage notice",
+    html:
+      '<section><header><h3>Marriage</h3></header><p>On 17 May 1888 at Trinity Chapel, <em>George H. Clark</em> wed <em>Louisa Bennett</em> of Albany, daughter of Mr. &amp; Mrs. Samuel Bennett.</p></section>',
+  },
+  {
+    label: "Obituary excerpt",
+    html:
+      '<div class="obituary"><h3>Obituary</h3><p><strong>Mrs. Sarah Ann Morris</strong>, aged 67, died 12 Oct 1914 in Denver. Survived by sons James and Robert, daughters Helen (Peters) and Clara (Wells).</p></div>',
+  },
+];
 
 function getTopConfidence(record: IndividualRecord): { field: string; value: number } | null {
   const scores = scoreConfidence(record);
@@ -168,8 +174,14 @@ export function initializeRecordsPage(): void {
     confidenceList,
     toggleSourcesButton,
     reextractButton,
+    clearInputButton,
     previewFrame,
     provenanceCount,
+    sampleChipContainer,
+    autoExtractToggle,
+    charCount,
+    lastRunStatus,
+    lastRunFooter,
     saveForm,
     saveModeNew,
     saveModeExisting,
@@ -194,8 +206,9 @@ export function initializeRecordsPage(): void {
   let lastHighlightDocument = "";
   let showingSources = false;
   let suggestedName = "";
-  let currentFilters: RecordFilterCriteria = { ...DEFAULT_FILTERS };
-  filterConfidenceOutput.textContent = formatConfidenceOutput(currentFilters.minConfidence);
+  let autoExtractEnabled = true;
+  let pendingExtraction: number | null = null;
+  let lastExtractionTimestamp: string | null = null;
 
   function buildExtractOptions(): ExtractOptions {
     return {
@@ -209,6 +222,54 @@ export function initializeRecordsPage(): void {
         category: definition.category,
       })),
     };
+  }
+
+  function setFeedback(message: string): void {
+    saveFeedback.textContent = message;
+  }
+
+  function updateCharCount(): void {
+    const length = htmlInput.value.length;
+    const label = length === 1 ? "character" : "characters";
+    charCount.textContent = `${length.toLocaleString()} ${label}`;
+    clearInputButton.disabled = length === 0;
+  }
+
+  function updateRunButtonState(): void {
+    if (autoExtractEnabled) {
+      reextractButton.disabled = true;
+    } else {
+      reextractButton.disabled = htmlInput.value.trim().length === 0;
+    }
+  }
+
+  function updateLastRunStatus(timestamp: string | null): void {
+    if (!timestamp) {
+      lastRunStatus.textContent = "Last extracted — never";
+      lastRunFooter.textContent = "Never";
+      lastRunFooter.dateTime = "";
+      return;
+    }
+
+    const formatted = formatTimestamp(timestamp);
+    lastRunStatus.textContent = `Last extracted — ${formatted}`;
+    lastRunFooter.textContent = formatted;
+    lastRunFooter.dateTime = timestamp;
+  }
+
+  function renderSampleChips(): void {
+    sampleChipContainer.replaceChildren();
+
+    for (const snippet of SAMPLE_SNIPPETS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "toolbar-chip";
+      button.textContent = snippet.label;
+      button.addEventListener("click", () => {
+        applySample(snippet);
+      });
+      sampleChipContainer.appendChild(button);
+    }
   }
 
   function renderJsonRecord(record: IndividualRecord): void {
@@ -588,7 +649,6 @@ export function initializeRecordsPage(): void {
 
     if (!hasRecord) {
       newIndividualInput.value = "";
-      saveFeedback.textContent = "";
     } else if (newModeActive && currentRecord) {
       suggestedName = getSuggestedIndividualName(currentRecord);
       if (!newIndividualInput.value.trim() || newIndividualInput.value === suggestedName) {
@@ -693,16 +753,21 @@ export function initializeRecordsPage(): void {
     if (averageElement) {
       averageElement.textContent = "—";
     }
+    updateRunButtonState();
+    updateCharCount();
   }
 
-  function handleInput(): void {
+  function runExtraction(options: { trigger?: ExtractionTrigger; label?: string } = {}): void {
+    const { trigger = autoExtractEnabled ? "auto" : "manual", label } = options;
     const value = htmlInput.value.trim();
+
+    updateCharCount();
 
     if (!value) {
       resetOutputs();
       currentRecord = null;
       updateSavePanel();
-      reextractButton.disabled = true;
+      setFeedback("Paste HTML to extract a record.");
       return;
     }
 
@@ -731,9 +796,27 @@ export function initializeRecordsPage(): void {
       suggestedName = getSuggestedIndividualName(record);
       newIndividualInput.value = suggestedName;
 
-      reextractButton.disabled = false;
-      saveFeedback.textContent = "";
+      updateRunButtonState();
+      lastExtractionTimestamp = new Date().toISOString();
+      updateLastRunStatus(lastExtractionTimestamp);
       updateSavePanel();
+
+      const feedback = (() => {
+        switch (trigger) {
+          case "manual":
+            return "Extraction refreshed manually.";
+          case "sample":
+            return label ? `Extracted sample snippet: ${label}.` : "Extracted sample snippet.";
+          case "load":
+            return label ? `Loaded record saved ${label}.` : "Loaded extraction from saved record.";
+          case "reset":
+            return "Starter sample extracted.";
+          default:
+            return "Extraction updated from pasted HTML.";
+        }
+      })();
+
+      setFeedback(feedback);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       currentRecord = null;
@@ -749,13 +832,65 @@ export function initializeRecordsPage(): void {
       toggleSourcesButton.textContent = "Highlight sources";
       provenanceCount.hidden = true;
       provenanceCount.textContent = "";
-      reextractButton.disabled = value.length === 0;
+      updateRunButtonState();
+      setFeedback("Extraction failed. Please review the source HTML.");
       updateSavePanel();
+    }
+  }
+
+  function handleInput(): void {
+    const value = htmlInput.value.trim();
+    updateCharCount();
+
+    if (pendingExtraction !== null) {
+      window.clearTimeout(pendingExtraction);
+      pendingExtraction = null;
+    }
+
+    if (!value) {
+      resetOutputs();
+      currentRecord = null;
+      updateSavePanel();
+      setFeedback("Paste HTML to extract a record.");
+      return;
+    }
+
+    if (!autoExtractEnabled) {
+      updateRunButtonState();
+      setFeedback("Auto extraction paused. Use Run extract to update results.");
+      return;
+    }
+
+    updateRunButtonState();
+
+    pendingExtraction = window.setTimeout(() => {
+      pendingExtraction = null;
+      runExtraction({ trigger: "auto" });
+    }, 350);
+  }
+
+  function applySample(snippet: SampleSnippet): void {
+    htmlInput.value = snippet.html;
+    htmlInput.focus();
+
+    if (pendingExtraction !== null) {
+      window.clearTimeout(pendingExtraction);
+      pendingExtraction = null;
+    }
+
+    updateCharCount();
+
+    if (autoExtractEnabled) {
+      runExtraction({ trigger: "sample", label: snippet.label });
+    } else {
+      updateRunButtonState();
+      setFeedback(`Sample snippet loaded: ${snippet.label}. Run extract to process.`);
     }
   }
 
   function toggleSources(): void {
     if (!lastHighlightDocument) {
+      setFeedback("Run an extraction to enable source highlighting.");
       return;
     }
 
@@ -766,6 +901,8 @@ export function initializeRecordsPage(): void {
     if (showingSources) {
       previewFrame.srcdoc = lastHighlightDocument;
     }
+
+    setFeedback(showingSources ? "Showing highlighted sources." : "Source highlights hidden.");
   }
 
   async function handleRecordAction(event: MouseEvent): Promise<void> {
@@ -796,51 +933,70 @@ export function initializeRecordsPage(): void {
       htmlInput.value = stored.record.sourceHtml;
       showingSources = false;
       toggleSourcesButton.textContent = "Highlight sources";
-      handleInput();
-      saveFeedback.textContent = `Loaded record saved ${formatTimestamp(stored.createdAt)}.`;
+      lastHighlightDocument = "";
+      previewFrame.hidden = true;
+
+      if (pendingExtraction !== null) {
+        window.clearTimeout(pendingExtraction);
+        pendingExtraction = null;
+      }
+
+      runExtraction({ trigger: "load", label: formatTimestamp(stored.createdAt) });
     } else if (button.dataset.action === "delete-record") {
       const confirmDelete = window.confirm("Remove this saved record? This cannot be undone.");
 
       if (confirmDelete) {
         try {
           await deleteRecord(recordId);
-          saveFeedback.textContent = "Removed saved record.";
+          setFeedback("Removed saved record.");
         } catch (error) {
           console.error("Failed to delete record", error);
-          saveFeedback.textContent = "Unable to remove record.";
+          setFeedback("Unable to remove record.");
         }
       }
     }
   }
 
+  renderSampleChips();
+  updateLastRunStatus(lastExtractionTimestamp);
+  updateRunButtonState();
+  updateCharCount();
+
   htmlInput.addEventListener("input", handleInput);
   toggleSourcesButton.addEventListener("click", toggleSources);
   reextractButton.addEventListener("click", () => {
-    handleInput();
-    if (!errorBox.hidden && errorBox.textContent) {
-      saveFeedback.textContent = "";
-    } else if (htmlInput.value.trim()) {
-      saveFeedback.textContent = "Re-extracted with current master data.";
+    runExtraction({ trigger: "manual" });
+  });
+
+  autoExtractToggle.addEventListener("change", () => {
+    autoExtractEnabled = autoExtractToggle.checked;
+
+    if (pendingExtraction !== null) {
+      window.clearTimeout(pendingExtraction);
+      pendingExtraction = null;
+    }
+
+    updateRunButtonState();
+
+    if (autoExtractEnabled) {
+      setFeedback("Auto extraction enabled.");
+      if (htmlInput.value.trim()) {
+        runExtraction({ trigger: "auto" });
+      }
+    } else {
+      setFeedback("Auto extraction paused. Use Run extract to update results.");
     }
   });
 
-  const handleFiltersChange = (): void => {
-    const nextFilters = readFiltersFromControls();
-    filterConfidenceOutput.textContent = formatConfidenceOutput(nextFilters.minConfidence);
-    applyFilters(nextFilters);
-  };
+  clearInputButton.addEventListener("click", () => {
+    if (pendingExtraction !== null) {
+      window.clearTimeout(pendingExtraction);
+      pendingExtraction = null;
+    }
 
-  filterSearchInput.addEventListener("input", handleFiltersChange);
-  filterIndividualSelect.addEventListener("change", handleFiltersChange);
-  filterStartDateInput.addEventListener("change", handleFiltersChange);
-  filterEndDateInput.addEventListener("change", handleFiltersChange);
-  filterConfidenceInput.addEventListener("input", handleFiltersChange);
-
-  recordsFiltersForm.addEventListener("reset", () => {
-    window.setTimeout(() => {
-      filterConfidenceOutput.textContent = formatConfidenceOutput(DEFAULT_FILTERS.minConfidence);
-      applyFilters({ ...DEFAULT_FILTERS });
-    }, 0);
+    htmlInput.value = "";
+    handleInput();
+    setFeedback("Cleared source input.");
   });
 
   savedRecordsContainer.addEventListener("click", (event) => {
@@ -857,10 +1013,10 @@ export function initializeRecordsPage(): void {
     if (shouldClear) {
       try {
         await clearRecords();
-        saveFeedback.textContent = "Cleared all saved records.";
+        setFeedback("Cleared all saved records.");
       } catch (error) {
         console.error("Failed to clear saved records", error);
-        saveFeedback.textContent = "Unable to clear saved records.";
+        setFeedback("Unable to clear saved records.");
       }
     }
   });
@@ -872,7 +1028,7 @@ export function initializeRecordsPage(): void {
     event.preventDefault();
 
     if (!currentRecord) {
-      saveFeedback.textContent = "Extract a record before saving.";
+      setFeedback("Extract a record before saving.");
       return;
     }
 
@@ -884,7 +1040,7 @@ export function initializeRecordsPage(): void {
         const providedName = newIndividualInput.value.trim() || suggestedName;
 
         if (!providedName) {
-          saveFeedback.textContent = "Provide a name for the new individual.";
+          setFeedback("Provide a name for the new individual.");
           newIndividualInput.focus();
           return;
         }
@@ -897,7 +1053,7 @@ export function initializeRecordsPage(): void {
         const selected = existingIndividualSelect.value;
 
         if (!selected) {
-          saveFeedback.textContent = "Choose an individual to link.";
+          setFeedback("Choose an individual to link.");
           existingIndividualSelect.focus();
           return;
         }
@@ -906,7 +1062,7 @@ export function initializeRecordsPage(): void {
         const individual = latestState.individuals.find((item) => item.id === selected);
         individualName = individual ? individual.name : "selected individual";
       } else {
-        saveFeedback.textContent = "Select how you want to link this record.";
+        setFeedback("Select how you want to link this record.");
         return;
       }
 
@@ -916,7 +1072,7 @@ export function initializeRecordsPage(): void {
 
       const summary = getRecordSummary(currentRecord);
       await createRecord({ individualId, summary, record: currentRecord });
-      saveFeedback.textContent = `Saved record for ${individualName}.`;
+      setFeedback(`Saved record for ${individualName}.`);
 
       if (saveModeNew.checked) {
         saveModeExisting.checked = true;
@@ -926,7 +1082,7 @@ export function initializeRecordsPage(): void {
       updateSavePanel();
     } catch (error) {
       console.error("Failed to save record", error);
-      saveFeedback.textContent = "Unable to save record. Please try again.";
+      setFeedback("Unable to save record. Please try again.");
     }
   });
 
@@ -937,8 +1093,16 @@ export function initializeRecordsPage(): void {
   });
 
   function resetApplication(): void {
+    autoExtractEnabled = true;
+    autoExtractToggle.checked = true;
+
+    if (pendingExtraction !== null) {
+      window.clearTimeout(pendingExtraction);
+      pendingExtraction = null;
+    }
+
     htmlInput.value = DEFAULT_HTML;
-    handleInput();
+    runExtraction({ trigger: "reset" });
   }
 
   resetApplication();
@@ -951,8 +1115,14 @@ function getRecordsElements(): RecordsElements | null {
   const confidenceList = document.getElementById("confidence");
   const toggleSourcesButton = document.getElementById("toggle-sources");
   const reextractButton = document.getElementById("reextract");
+  const clearInputButton = document.getElementById("clear-input");
   const previewFrame = document.getElementById("source-preview");
   const provenanceCount = document.getElementById("provenance-count");
+  const sampleChipContainer = document.getElementById("sample-chip-row");
+  const autoExtractToggle = document.getElementById("auto-extract");
+  const charCount = document.getElementById("char-count");
+  const lastRunStatus = document.getElementById("last-run");
+  const lastRunFooter = document.getElementById("last-run-footer");
   const saveForm = document.getElementById("save-form");
   const saveModeNew = document.getElementById("save-mode-new");
   const saveModeExisting = document.getElementById("save-mode-existing");
@@ -979,8 +1149,14 @@ function getRecordsElements(): RecordsElements | null {
       confidenceList instanceof HTMLDivElement &&
       toggleSourcesButton instanceof HTMLButtonElement &&
       reextractButton instanceof HTMLButtonElement &&
+      clearInputButton instanceof HTMLButtonElement &&
       previewFrame instanceof HTMLIFrameElement &&
       provenanceCount instanceof HTMLSpanElement &&
+      sampleChipContainer instanceof HTMLDivElement &&
+      autoExtractToggle instanceof HTMLInputElement &&
+      charCount instanceof HTMLSpanElement &&
+      lastRunStatus instanceof HTMLSpanElement &&
+      lastRunFooter instanceof HTMLTimeElement &&
       saveForm instanceof HTMLFormElement &&
       saveModeNew instanceof HTMLInputElement &&
       saveModeExisting instanceof HTMLInputElement &&
@@ -1010,8 +1186,14 @@ function getRecordsElements(): RecordsElements | null {
     confidenceList,
     toggleSourcesButton,
     reextractButton,
+    clearInputButton,
     previewFrame,
     provenanceCount,
+    sampleChipContainer,
+    autoExtractToggle,
+    charCount,
+    lastRunStatus,
+    lastRunFooter,
     saveForm,
     saveModeNew,
     saveModeExisting,
