@@ -119,7 +119,9 @@ interface RecordsElements {
   workspaceSearchClear: HTMLButtonElement | null;
   openImportModalButton: HTMLButtonElement;
   loadNextImportButton: HTMLButtonElement;
+  processImportQueueButton: HTMLButtonElement;
   importQueueStatus: HTMLSpanElement;
+  importQueueProgress: HTMLSpanElement;
   importModal: HTMLDivElement;
   importModalBackdrop: HTMLDivElement;
   importModalClose: HTMLButtonElement;
@@ -545,7 +547,9 @@ export function initializeRecordsPage(): void {
     workspaceSearchClear,
     openImportModalButton,
     loadNextImportButton,
+    processImportQueueButton,
     importQueueStatus,
+    importQueueProgress,
     importModal,
     importModalBackdrop,
     importModalClose,
@@ -570,6 +574,10 @@ export function initializeRecordsPage(): void {
   let importQueue: ImportQueueItem[] = [];
   let importColumnLabel = "";
   let importData: CsvImportData | null = null;
+  let activeImportItem: ImportQueueItem | null = null;
+  let isProcessingImportQueue = false;
+  let importQueueTotal = 0;
+  let importQueueProcessed = 0;
 
   const maybeSearchHandle = initializeWorkspaceSearch({
     elements: {
@@ -626,6 +634,11 @@ export function initializeRecordsPage(): void {
   });
 
   loadNextImportButton.addEventListener("click", () => {
+    if (isProcessingImportQueue) {
+      setFeedback("Import queue is currently processing. Please wait.");
+      return;
+    }
+
     if (!importQueue.length) {
       setFeedback("No pending CSV imports.");
       updateImportQueueStatus();
@@ -640,6 +653,10 @@ export function initializeRecordsPage(): void {
     }
 
     applyImportItem(next, importQueue.length);
+  });
+
+  processImportQueueButton.addEventListener("click", () => {
+    void processImportQueue();
   });
 
   document.addEventListener("keydown", (event) => {
@@ -669,18 +686,39 @@ export function initializeRecordsPage(): void {
   }
 
   function updateImportQueueStatus(): void {
-    if (importQueue.length > 0) {
-      const remaining = importQueue.length;
+    const queued = importQueue.length + (activeImportItem ? 1 : 0);
+    const hasQueuedItems = queued > 0;
+
+    if (isProcessingImportQueue) {
       importQueueStatus.hidden = false;
-      importQueueStatus.textContent = `${remaining.toLocaleString()} CSV row${remaining === 1 ? "" : "s"} remaining`;
-      loadNextImportButton.hidden = false;
-      loadNextImportButton.disabled = false;
+      if (importQueueTotal > 0) {
+        const currentStep = Math.min(importQueueProcessed + 1, importQueueTotal);
+        importQueueStatus.textContent = `Processing CSV import (${currentStep} of ${importQueueTotal})`;
+        importQueueProgress.hidden = false;
+        const processedCount = Math.min(importQueueProcessed, importQueueTotal);
+        importQueueProgress.textContent = `Saved ${processedCount.toLocaleString()} / ${importQueueTotal.toLocaleString()}`;
+      } else {
+        importQueueStatus.textContent = "Processing CSV import…";
+        importQueueProgress.hidden = true;
+        importQueueProgress.textContent = "";
+      }
+    } else if (hasQueuedItems) {
+      importQueueStatus.hidden = false;
+      importQueueStatus.textContent = `${queued.toLocaleString()} CSV row${queued === 1 ? "" : "s"} queued`;
+      importQueueProgress.hidden = true;
+      importQueueProgress.textContent = "";
     } else {
       importQueueStatus.hidden = true;
       importQueueStatus.textContent = "";
-      loadNextImportButton.hidden = true;
-      loadNextImportButton.disabled = true;
+      importQueueProgress.hidden = true;
+      importQueueProgress.textContent = "";
     }
+
+    loadNextImportButton.hidden = !hasQueuedItems;
+    loadNextImportButton.disabled = !hasQueuedItems || isProcessingImportQueue;
+    processImportQueueButton.hidden = !hasQueuedItems;
+    processImportQueueButton.disabled = !hasQueuedItems || isProcessingImportQueue;
+    openImportModalButton.disabled = isProcessingImportQueue;
   }
 
   function createColumnPlaceholderOption(): HTMLOptionElement {
@@ -927,11 +965,15 @@ export function initializeRecordsPage(): void {
     const [first, ...remaining] = htmlRows;
     importQueue = remaining;
     importColumnLabel = columnName;
+    importQueueTotal = htmlRows.length;
+    importQueueProcessed = 0;
+    isProcessingImportQueue = false;
     closeImportModal();
     applyImportItem(first, importQueue.length);
   }
 
   function applyImportItem(item: ImportQueueItem, remaining: number): void {
+    activeImportItem = item;
     htmlInput.value = item.html;
     htmlInput.focus();
     showingSources = false;
@@ -969,6 +1011,164 @@ export function initializeRecordsPage(): void {
     if (remaining === 0) {
       importColumnLabel = "";
     }
+  }
+
+  async function processImportQueue(): Promise<void> {
+    if (isProcessingImportQueue) {
+      return;
+    }
+
+    const totalRemaining = importQueue.length + (activeImportItem ? 1 : 0);
+
+    if (totalRemaining === 0) {
+      setFeedback("No pending CSV imports.");
+      updateImportQueueStatus();
+      return;
+    }
+
+    const columnLabel = importColumnLabel || "the selected column";
+    isProcessingImportQueue = true;
+    importQueueTotal = totalRemaining;
+    importQueueProcessed = 0;
+    updateImportQueueStatus();
+
+    const previousHtmlDisabled = htmlInput.disabled;
+    const previousAutoExtractDisabled = autoExtractToggle.disabled;
+
+    htmlInput.disabled = true;
+    clearInputButton.disabled = true;
+    reextractButton.disabled = true;
+    toggleSourcesButton.disabled = true;
+    autoExtractToggle.disabled = true;
+
+    let completed = false;
+
+    try {
+      if (activeImportItem) {
+        const success = await processQueueItem(activeImportItem, importQueue.length);
+        if (!success) {
+          return;
+        }
+        importQueueProcessed += 1;
+        updateImportQueueStatus();
+      }
+
+      while (importQueue.length > 0) {
+        const next = importQueue.shift();
+
+        if (!next) {
+          continue;
+        }
+
+        const success = await processQueueItem(next, importQueue.length);
+
+        if (!success) {
+          importQueue.unshift(next);
+          return;
+        }
+
+        importQueueProcessed += 1;
+        updateImportQueueStatus();
+      }
+
+      completed = true;
+      activeImportItem = null;
+      setFeedback(
+        `Processed ${totalRemaining.toLocaleString()} CSV row${totalRemaining === 1 ? "" : "s"} from ${columnLabel}.`,
+      );
+    } catch (error) {
+      console.error("Failed to process import queue", error);
+      setFeedback("Unable to process the import queue. Review the last row and try again.");
+    } finally {
+      htmlInput.disabled = previousHtmlDisabled;
+      autoExtractToggle.disabled = previousAutoExtractDisabled;
+      updateCharCount();
+      updateRunButtonState();
+      toggleSourcesButton.disabled = !currentRecord;
+      toggleSourcesButton.textContent = showingSources ? "Hide sources" : "Highlight sources";
+      isProcessingImportQueue = false;
+      updateImportQueueStatus();
+      updateSavePanel();
+
+      if (completed) {
+        importQueueTotal = 0;
+        importQueueProcessed = 0;
+        importQueue = [];
+        importColumnLabel = "";
+      }
+    }
+  }
+
+  async function processQueueItem(item: ImportQueueItem, remaining: number): Promise<boolean> {
+    try {
+      applyImportItem(item, remaining);
+      clearInputButton.disabled = true;
+      reextractButton.disabled = true;
+      toggleSourcesButton.disabled = true;
+
+      if (!autoExtractEnabled) {
+        runExtraction({ trigger: "import", label: `CSV row ${item.rowIndex}` });
+      }
+
+      clearInputButton.disabled = true;
+      reextractButton.disabled = true;
+      toggleSourcesButton.disabled = true;
+
+      if (!currentRecord) {
+        setFeedback(`Extraction failed for CSV row ${item.rowIndex}. Processing paused.`);
+        return false;
+      }
+
+      await persistCurrentRecordForImport(item.rowIndex);
+      return true;
+    } catch (error) {
+      console.error(`Failed to process CSV row ${item.rowIndex}`, error);
+      setFeedback(`Unable to process CSV row ${item.rowIndex}. Processing paused.`);
+      return false;
+    }
+  }
+
+  async function persistCurrentRecordForImport(rowIndex: number): Promise<void> {
+    if (!currentRecord) {
+      throw new Error("No record available to save.");
+    }
+
+    let individualId: string | null = null;
+    let individualName = "";
+
+    if (saveModeExisting.checked && !saveModeExisting.disabled) {
+      const selected = existingIndividualSelect.value;
+
+      if (selected) {
+        individualId = selected;
+        const existing = latestState.individuals.find((item) => item.id === selected);
+        individualName = existing ? existing.name : "selected individual";
+      }
+    }
+
+    if (!individualId) {
+      const providedName = newIndividualInput.value.trim();
+      const preferredName = providedName || suggestedName || getSuggestedIndividualName(currentRecord);
+      const fallbackName = preferredName || `Imported individual ${rowIndex}`;
+      const individual = await createIndividual(fallbackName);
+      individualId = individual.id;
+      individualName = individual.name;
+      newIndividualInput.value = "";
+      latestState = getState();
+    }
+
+    const summary = getRecordSummary(currentRecord);
+    await createRecord({ individualId, summary, record: currentRecord });
+    latestState = getState();
+
+    if (saveModeNew.checked) {
+      saveModeExisting.checked = true;
+      saveModeNew.checked = false;
+    }
+
+    existingIndividualSelect.value = individualId;
+    updateSavePanel();
+    setFeedback(`Saved CSV row ${rowIndex} for ${individualName}.`);
   }
   function updateCharCount(): void {
     const length = htmlInput.value.length;
@@ -1470,10 +1670,10 @@ export function initializeRecordsPage(): void {
     const hasRecord = Boolean(currentRecord);
     const hasIndividuals = latestState.individuals.length > 0;
 
-    saveButton.disabled = !hasRecord;
-    saveModeNew.disabled = !hasRecord;
+    saveButton.disabled = !hasRecord || isProcessingImportQueue;
+    saveModeNew.disabled = !hasRecord || isProcessingImportQueue;
 
-    const shouldDisableExisting = !hasRecord || !hasIndividuals;
+    const shouldDisableExisting = !hasRecord || !hasIndividuals || isProcessingImportQueue;
     saveModeExisting.disabled = shouldDisableExisting;
 
     if (saveModeExisting.disabled && saveModeExisting.checked) {
@@ -2011,7 +2211,9 @@ function getRecordsElements(): RecordsElements | null {
   const workspaceSearchClear = document.getElementById("workspace-search-clear");
   const openImportModalButton = document.getElementById("open-import-modal");
   const loadNextImportButton = document.getElementById("load-next-import");
+  const processImportQueueButton = document.getElementById("process-import-queue");
   const importQueueStatus = document.getElementById("import-queue-status");
+  const importQueueProgress = document.getElementById("import-queue-progress");
   const importModal = document.getElementById("csv-import-modal");
   const importModalBackdrop = document.getElementById("csv-import-backdrop");
   const importModalClose = document.getElementById("close-import-modal");
@@ -2060,7 +2262,9 @@ function getRecordsElements(): RecordsElements | null {
       workspaceSearchInput instanceof HTMLInputElement &&
       openImportModalButton instanceof HTMLButtonElement &&
       loadNextImportButton instanceof HTMLButtonElement &&
+      processImportQueueButton instanceof HTMLButtonElement &&
       importQueueStatus instanceof HTMLSpanElement &&
+      importQueueProgress instanceof HTMLSpanElement &&
       importModal instanceof HTMLDivElement &&
       importModalBackdrop instanceof HTMLDivElement &&
       importModalClose instanceof HTMLButtonElement &&
@@ -2115,7 +2319,9 @@ function getRecordsElements(): RecordsElements | null {
       workspaceSearchClear instanceof HTMLButtonElement ? workspaceSearchClear : null,
     openImportModalButton,
     loadNextImportButton,
+    processImportQueueButton,
     importQueueStatus,
+    importQueueProgress,
     importModal,
     importModalBackdrop,
     importModalClose,

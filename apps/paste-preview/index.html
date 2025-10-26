@@ -191,6 +191,14 @@
                       <button id="reextract" type="button" class="button-secondary" disabled>Run extract</button>
                       <button id="clear-input" type="button" class="button-secondary" disabled>Clear input</button>
                       <button id="load-next-import" type="button" class="button-secondary" hidden>Load next import</button>
+                      <button id="process-import-queue" type="button" class="button-secondary" hidden>Process queue</button>
+                      <span
+                        id="import-queue-progress"
+                        class="toolbar-progress"
+                        role="status"
+                        aria-live="polite"
+                        hidden
+                      ></span>
                     </div>
                   </div>
                   <iframe id="source-preview" title="Provenance preview" hidden></iframe>
@@ -343,6 +351,10 @@
               </div>
             </div>
             <p id="csv-import-feedback" class="supporting-text" aria-live="polite"></p>
+            <p class="supporting-text">
+              After queuing rows, use <em>Load next import</em> to review them individually or <em>Process queue</em> to
+              automatically extract and save each record.
+            </p>
             <div class="card-actions">
               <button type="submit" id="csv-import-submit" disabled>Queue import</button>
               <button type="button" class="button-secondary" id="csv-import-cancel">Cancel</button>
