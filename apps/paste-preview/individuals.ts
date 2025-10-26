@@ -2,6 +2,7 @@ import {
   cloneIndividualProfile,
   createEmptyProfile,
   createIndividual,
+  deleteIndividual,
   getState,
   normalizeProfile,
   subscribe,
@@ -104,6 +105,7 @@ interface IndividualsElements {
   editNotesInput: HTMLTextAreaElement;
   editRoleSelect: HTMLSelectElement;
   editSaveButton: HTMLButtonElement;
+  deleteIndividualButton: HTMLButtonElement;
   editFeedback: HTMLSpanElement | null;
   editModal: HTMLDivElement;
   editModalBackdrop: HTMLDivElement | null;
@@ -864,6 +866,7 @@ export function initializeIndividualsPage(): void {
     editNotesInput,
     editRoleSelect,
     editSaveButton,
+    deleteIndividualButton,
     editFeedback,
     editModal,
     editModalBackdrop,
@@ -885,6 +888,7 @@ export function initializeIndividualsPage(): void {
   let profileSaving = false;
   let individualSearchQuery = "";
   let editModalOpen = false;
+  let deletingIndividual = false;
 
   const maybeSearchHandle = initializeWorkspaceSearch({
     elements: {
@@ -1633,6 +1637,7 @@ export function initializeIndividualsPage(): void {
     editNotesInput.disabled = !hasSelection;
     editRoleSelect.disabled = !hasSelection;
     editSaveButton.disabled = !hasSelection;
+    deleteIndividualButton.disabled = !hasSelection;
 
     if (!selected) {
       editForm.reset();
@@ -1745,6 +1750,49 @@ export function initializeIndividualsPage(): void {
     }
   });
 
+  deleteIndividualButton.addEventListener("click", async () => {
+    if (deletingIndividual) {
+      return;
+    }
+
+    const selected = getSelectedIndividual();
+
+    if (!selected) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove ${selected.name}? This will also delete any linked records.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    deletingIndividual = true;
+    deleteIndividualButton.disabled = true;
+    deleteIndividualButton.setAttribute("aria-busy", "true");
+    if (editFeedback) {
+      editFeedback.textContent = "Deleting individual…";
+    }
+
+    try {
+      await deleteIndividual(selected.id);
+      if (createFeedback) {
+        createFeedback.textContent = `Removed individual ${selected.name}.`;
+      }
+    } catch (error) {
+      console.error("Failed to delete individual", error);
+      if (editFeedback) {
+        editFeedback.textContent = "Unable to delete individual.";
+      }
+      deleteIndividualButton.disabled = false;
+    } finally {
+      deletingIndividual = false;
+      deleteIndividualButton.removeAttribute("aria-busy");
+    }
+  });
+
   profileSaveButton.addEventListener("click", async () => {
     const selected = getSelectedIndividual();
 
@@ -1834,6 +1882,7 @@ function getIndividualsElements(): IndividualsElements | null {
   const editRoleSelect = document.getElementById("edit-individual-role");
   const editFeedback = document.getElementById("edit-individual-feedback");
   const editSaveButton = document.getElementById("save-individual-button");
+  const deleteIndividualButton = document.getElementById("delete-individual-button");
   const editModal = document.getElementById("individual-edit-modal");
   const editModalBackdrop = document.getElementById("individual-edit-backdrop");
   const editModalClose = document.getElementById("close-individual-modal");
@@ -1857,6 +1906,7 @@ function getIndividualsElements(): IndividualsElements | null {
       editNotesInput instanceof HTMLTextAreaElement &&
       editRoleSelect instanceof HTMLSelectElement &&
       editSaveButton instanceof HTMLButtonElement &&
+      deleteIndividualButton instanceof HTMLButtonElement &&
       editModal instanceof HTMLDivElement &&
       editModalClose instanceof HTMLButtonElement &&
       profileEditor instanceof HTMLDivElement &&
@@ -1879,6 +1929,7 @@ function getIndividualsElements(): IndividualsElements | null {
     editNotesInput,
     editRoleSelect,
     editSaveButton,
+    deleteIndividualButton,
     editFeedback: editFeedback instanceof HTMLSpanElement ? editFeedback : null,
     editModal,
     editModalBackdrop: editModalBackdrop instanceof HTMLDivElement ? editModalBackdrop : null,

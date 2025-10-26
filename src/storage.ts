@@ -810,6 +810,56 @@ export async function renameIndividual(id: string, name: string): Promise<Stored
   return updateIndividual({ id, name });
 }
 
+export async function deleteIndividual(id: string): Promise<void> {
+  await initialization;
+  const next = cloneState(state);
+  const index = next.individuals.findIndex((individual) => individual.id === id);
+
+  if (index === -1) {
+    return;
+  }
+
+  next.individuals.splice(index, 1);
+
+  const now = new Date().toISOString();
+
+  next.records = next.records.filter((record) => record.individualId !== id);
+
+  for (const individual of next.individuals) {
+    let profileChanged = false;
+    const { linkedParents, linkedSpouses, linkedChildren } = individual.profile;
+
+    if (linkedParents.father === id) {
+      linkedParents.father = undefined;
+      profileChanged = true;
+    }
+
+    if (linkedParents.mother === id) {
+      linkedParents.mother = undefined;
+      profileChanged = true;
+    }
+
+    const filteredSpouses = linkedSpouses.filter((spouseId) => spouseId !== id);
+    if (filteredSpouses.length !== linkedSpouses.length) {
+      individual.profile.linkedSpouses = filteredSpouses;
+      profileChanged = true;
+    }
+
+    const filteredChildren = linkedChildren.filter((childId) => childId !== id);
+    if (filteredChildren.length !== linkedChildren.length) {
+      individual.profile.linkedChildren = filteredChildren;
+      profileChanged = true;
+    }
+
+    if (profileChanged) {
+      individual.profileUpdatedAt = now;
+      individual.updatedAt = now;
+    }
+  }
+
+  await commit(next);
+}
+
 export async function saveProfessionDefinition(options: {
   id?: string;
   label: string;
