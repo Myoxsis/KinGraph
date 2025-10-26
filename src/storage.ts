@@ -29,8 +29,11 @@ export interface IndividualProfile {
   death: IndividualRecord["death"];
   residences: IndividualRecord["residences"];
   parents: IndividualRecord["parents"];
+  linkedParents: { father?: string; mother?: string };
   spouses: string[];
+  linkedSpouses: string[];
   children: string[];
+  linkedChildren: string[];
   siblings: string[];
   occupation?: string;
   religion?: string;
@@ -112,8 +115,11 @@ export function createEmptyProfile(): IndividualProfile {
     death: {},
     residences: [],
     parents: {},
+    linkedParents: {},
     spouses: [],
+    linkedSpouses: [],
     children: [],
+    linkedChildren: [],
     siblings: [],
     occupation: undefined,
     religion: undefined,
@@ -171,39 +177,65 @@ export function normalizeProfile(
     place: sanitizeString(deathSource.place),
   };
 
-  profile.residences = Array.isArray(input.residences)
-    ? input.residences
-        .map((residence) => {
-          if (!residence || typeof residence !== "object") {
-            return null;
-          }
+  const normalizedResidences: IndividualRecord["residences"] = [];
+  if (Array.isArray(input.residences)) {
+    for (const residence of input.residences) {
+      if (!residence || typeof residence !== "object") {
+        continue;
+      }
 
-          const normalized = {
-            raw: sanitizeString((residence as { raw?: unknown }).raw),
-            year: sanitizeNumber((residence as { year?: unknown }).year),
-            place: sanitizeString((residence as { place?: unknown }).place),
-          };
+      const normalized = {
+        raw: sanitizeString((residence as { raw?: unknown }).raw),
+        year: sanitizeNumber((residence as { year?: unknown }).year),
+        place: sanitizeString((residence as { place?: unknown }).place),
+      };
 
-          if (normalized.raw || normalized.year !== undefined || normalized.place) {
-            return normalized;
-          }
+      if (normalized.raw || normalized.year !== undefined || normalized.place) {
+        normalizedResidences.push(normalized);
+      }
+    }
+  }
 
-          return null;
-        })
-        .filter((value): value is IndividualRecord["residences"][number] => value !== null)
-    : [];
+  profile.residences = normalizedResidences;
 
   profile.parents = {
     father: sanitizeString(input.parents?.father),
     mother: sanitizeString(input.parents?.mother),
   };
 
+  const linkedParentsSource = (input as { linkedParents?: { father?: unknown; mother?: unknown } }).linkedParents ?? {};
+  profile.linkedParents = {
+    father: sanitizeString(linkedParentsSource.father),
+    mother: sanitizeString(linkedParentsSource.mother),
+  };
+
+  const normalizeLinkArray = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const links: string[] = [];
+
+    for (const entry of value) {
+      const sanitized = sanitizeString(entry);
+      if (sanitized && !seen.has(sanitized)) {
+        seen.add(sanitized);
+        links.push(sanitized);
+      }
+    }
+
+    return links;
+  };
+
   profile.spouses = Array.isArray(input.spouses)
     ? input.spouses.map((spouse) => sanitizeString(spouse) ?? "").filter((spouse) => spouse.length)
     : [];
+  profile.linkedSpouses = normalizeLinkArray((input as { linkedSpouses?: unknown }).linkedSpouses);
   profile.children = Array.isArray(input.children)
     ? input.children.map((child) => sanitizeString(child) ?? "").filter((child) => child.length)
     : [];
+  profile.linkedChildren = normalizeLinkArray((input as { linkedChildren?: unknown }).linkedChildren);
   profile.siblings = Array.isArray(input.siblings)
     ? input.siblings.map((sibling) => sanitizeString(sibling) ?? "").filter((sibling) => sibling.length)
     : [];

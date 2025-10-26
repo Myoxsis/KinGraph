@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyProfile, normalizeProfile } from "../src/storage";
+import type { IndividualProfile } from "../src/storage";
 
 describe("normalizeProfile", () => {
   it("trims and coerces profile fields while discarding blanks", () => {
@@ -30,13 +31,19 @@ describe("normalizeProfile", () => {
         father: " John Smith ",
         mother: " Mary Smith ",
       } as unknown,
+      linkedParents: {
+        father: " father-id ",
+        mother: "   ",
+      } as unknown,
       spouses: [" John Doe ", " "] as unknown,
+      linkedSpouses: [" spouse-1 ", "spouse-1", " "] as unknown,
       children: [" Anna Jr. "] as unknown,
+      linkedChildren: [" child-1 "] as unknown,
       siblings: [" Bob ", ""] as unknown,
       occupation: " Teacher ",
       religion: " Catholic ",
       notes: "  Loves gardening  ",
-    });
+    } as unknown as Partial<IndividualProfile>);
 
     expect(profile.givenNames).toEqual(["Anna", "Beth"]);
     expect(profile.surname).toBe("Smith");
@@ -64,8 +71,11 @@ describe("normalizeProfile", () => {
       { raw: undefined, year: undefined, place: "Chicago" },
     ]);
     expect(profile.parents).toEqual({ father: "John Smith", mother: "Mary Smith" });
+    expect(profile.linkedParents).toEqual({ father: "father-id", mother: undefined });
     expect(profile.spouses).toEqual(["John Doe"]);
+    expect(profile.linkedSpouses).toEqual(["spouse-1"]);
     expect(profile.children).toEqual(["Anna Jr."]);
+    expect(profile.linkedChildren).toEqual(["child-1"]);
     expect(profile.siblings).toEqual(["Bob"]);
     expect(profile.occupation).toBe("Teacher");
     expect(profile.religion).toBe("Catholic");
@@ -99,13 +109,19 @@ describe("normalizeProfile", () => {
         father: 123,
         mother: null,
       } as unknown,
+      linkedParents: {
+        father: 123,
+        mother: null,
+      } as unknown,
       spouses: "Spouse" as unknown,
+      linkedSpouses: "invalid" as unknown,
       children: 42 as unknown,
+      linkedChildren: null as unknown,
       siblings: null as unknown,
       occupation: "   ",
       religion: null as unknown,
       notes: "   ",
-    });
+    } as unknown as Partial<IndividualProfile>);
 
     expect(profile.givenNames).toEqual([]);
     expect(profile.aliases).toEqual([]);
@@ -120,8 +136,11 @@ describe("normalizeProfile", () => {
     });
     expect(profile.residences).toEqual([]);
     expect(profile.parents).toEqual({ father: undefined, mother: undefined });
+    expect(profile.linkedParents).toEqual({ father: undefined, mother: undefined });
     expect(profile.spouses).toEqual([]);
+    expect(profile.linkedSpouses).toEqual([]);
     expect(profile.children).toEqual([]);
+    expect(profile.linkedChildren).toEqual([]);
     expect(profile.siblings).toEqual([]);
     expect(profile.occupation).toBeUndefined();
     expect(profile.religion).toBeUndefined();

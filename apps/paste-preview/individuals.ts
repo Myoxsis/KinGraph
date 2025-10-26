@@ -909,7 +909,304 @@ export function initializeIndividualsPage(): void {
   const fieldRenderers: FieldRenderer[] = PROFILE_FIELD_CONFIGS.map((config) =>
     createFieldRenderer(config, handleFieldInput, handleSuggestionApply),
   );
+
+  type ParentKey = "father" | "mother";
+
+  interface RelationshipLinker {
+    refresh(): void;
+  }
+
+  const relationshipLinkers: RelationshipLinker[] = [];
+
+  function refreshRelationshipLinkers(): void {
+    for (const linker of relationshipLinkers) {
+      linker.refresh();
+    }
+  }
+
+  function getLinkedIndividualName(individualId: string | undefined | null): string | null {
+    if (!individualId) {
+      return null;
+    }
+
+    const match = latestState.individuals.find((individual) => individual.id === individualId);
+    return match ? match.name : null;
+  }
+
+  function getAvailableIndividuals(exclude: Set<string>): { id: string; label: string }[] {
+    return latestState.individuals
+      .filter((individual) => !exclude.has(individual.id))
+      .map((individual) => ({ id: individual.id, label: individual.name }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  function createParentRelationshipLinker(
+    renderer: FieldRenderer,
+    parentKey: ParentKey,
+  ): RelationshipLinker {
+    const selectId = `${renderer.config.key.replace(/\./g, "-")}-link-select`;
+    const container = document.createElement("div");
+    container.className = "relationship-linker";
+
+    const label = document.createElement("label");
+    label.className = "relationship-linker-label";
+    label.htmlFor = selectId;
+    label.textContent =
+      parentKey === "father" ? "Link to existing father" : "Link to existing mother";
+    container.appendChild(label);
+
+    const select = document.createElement("select");
+    select.className = "relationship-linker-select";
+    select.id = selectId;
+    container.appendChild(select);
+
+    const status = document.createElement("p");
+    status.className = "relationship-linker-status";
+    container.appendChild(status);
+
+    select.addEventListener("change", () => {
+      const value = select.value || undefined;
+      const current = draftProfile.linkedParents[parentKey];
+
+      if (current !== value) {
+        draftProfile.linkedParents[parentKey] = value;
+        markProfileDirty();
+        updateProfileSaveButtonState();
+        refreshRelationshipLinkers();
+      }
+    });
+
+    renderer.container.appendChild(container);
+
+    return {
+      refresh() {
+        const current = draftProfile.linkedParents[parentKey];
+        const selected = getSelectedIndividual();
+        const exclude = new Set<string>();
+        if (selected) {
+          exclude.add(selected.id);
+        }
+
+        const available = getAvailableIndividuals(exclude);
+
+        select.replaceChildren();
+
+        const emptyOption = document.createElement("option");
+        emptyOption.value = "";
+        emptyOption.textContent = "— No link —";
+        select.appendChild(emptyOption);
+
+        let hasCurrent = false;
+
+        for (const optionData of available) {
+          const option = document.createElement("option");
+          option.value = optionData.id;
+          option.textContent = optionData.label;
+          if (optionData.id === current) {
+            hasCurrent = true;
+          }
+          select.appendChild(option);
+        }
+
+        if (current && !hasCurrent) {
+          const missingOption = document.createElement("option");
+          missingOption.value = current;
+          missingOption.textContent = "Linked individual not found";
+          select.appendChild(missingOption);
+          hasCurrent = true;
+        }
+
+        if (current && hasCurrent) {
+          select.value = current;
+        } else {
+          select.value = "";
+        }
+
+        const name = getLinkedIndividualName(current);
+        if (name) {
+          status.textContent = `Linked to ${name}.`;
+        } else if (current) {
+          status.textContent = "Linked individual not found.";
+        } else {
+          status.textContent = "No individual linked.";
+        }
+      },
+    } satisfies RelationshipLinker;
+  }
+
+  function createMultiRelationshipLinker(
+    renderer: FieldRenderer,
+    options: {
+      label: string;
+      emptyMessage: string;
+      getLinks: () => string[];
+      setLinks: (links: string[]) => void;
+    },
+  ): RelationshipLinker {
+    const container = document.createElement("div");
+    container.className = "relationship-linker";
+
+    const selectId = `${renderer.config.key.replace(/\./g, "-")}-linked-select`;
+
+    const label = document.createElement("label");
+    label.className = "relationship-linker-label";
+    label.htmlFor = selectId;
+    label.textContent = options.label;
+    container.appendChild(label);
+
+    const list = document.createElement("ul");
+    list.className = "relationship-linker-list";
+    container.appendChild(list);
+
+    const controls = document.createElement("div");
+    controls.className = "relationship-linker-controls";
+    const select = document.createElement("select");
+    select.className = "relationship-linker-select";
+    select.id = selectId;
+    controls.appendChild(select);
+
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "relationship-linker-add";
+    addButton.textContent = "Add link";
+    addButton.disabled = true;
+    controls.appendChild(addButton);
+
+    container.appendChild(controls);
+
+    select.addEventListener("change", () => {
+      addButton.disabled = !select.value;
+    });
+
+    addButton.addEventListener("click", () => {
+      const value = select.value;
+      if (!value) {
+        return;
+      }
+
+      const existing = options.getLinks();
+      if (existing.includes(value)) {
+        select.value = "";
+        addButton.disabled = true;
+        return;
+      }
+
+      options.setLinks([...existing, value]);
+      markProfileDirty();
+      updateProfileSaveButtonState();
+      select.value = "";
+      addButton.disabled = true;
+      refreshRelationshipLinkers();
+    });
+
+    renderer.container.appendChild(container);
+
+    return {
+      refresh() {
+        const links = options.getLinks();
+
+        list.replaceChildren();
+
+        if (!links.length) {
+          const emptyItem = document.createElement("li");
+          emptyItem.className = "relationship-linker-empty";
+          emptyItem.textContent = options.emptyMessage;
+          list.appendChild(emptyItem);
+        } else {
+          for (const id of links) {
+            const item = document.createElement("li");
+            item.className = "relationship-linker-chip";
+
+            const name = getLinkedIndividualName(id);
+            const labelEl = document.createElement("span");
+            labelEl.className = "relationship-linker-chip-label";
+            labelEl.textContent = name ?? "Linked individual not found";
+            item.appendChild(labelEl);
+
+            if (!name) {
+              item.classList.add("is-missing");
+            }
+
+            const removeButton = document.createElement("button");
+            removeButton.type = "button";
+            removeButton.className = "relationship-linker-remove";
+            removeButton.textContent = "Remove";
+            removeButton.addEventListener("click", () => {
+              const current = options.getLinks();
+              if (!current.includes(id)) {
+                return;
+              }
+              options.setLinks(current.filter((entry) => entry !== id));
+              markProfileDirty();
+              updateProfileSaveButtonState();
+              refreshRelationshipLinkers();
+            });
+
+            item.appendChild(removeButton);
+            list.appendChild(item);
+          }
+        }
+
+        const linksSet = new Set(options.getLinks());
+        const selected = getSelectedIndividual();
+        if (selected) {
+          linksSet.add(selected.id);
+        }
+
+        const available = getAvailableIndividuals(linksSet);
+
+        select.replaceChildren();
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = available.length ? "Select individual" : "No individuals available";
+        select.appendChild(placeholder);
+
+        for (const optionData of available) {
+          const option = document.createElement("option");
+          option.value = optionData.id;
+          option.textContent = optionData.label;
+          select.appendChild(option);
+        }
+
+        select.value = "";
+        select.disabled = available.length === 0;
+        addButton.disabled = true;
+      },
+    } satisfies RelationshipLinker;
+  }
+
+  for (const renderer of fieldRenderers) {
+    if (renderer.config.key === "parents.father") {
+      relationshipLinkers.push(createParentRelationshipLinker(renderer, "father"));
+    } else if (renderer.config.key === "parents.mother") {
+      relationshipLinkers.push(createParentRelationshipLinker(renderer, "mother"));
+    } else if (renderer.config.key === "spouses") {
+      relationshipLinkers.push(
+        createMultiRelationshipLinker(renderer, {
+          label: "Linked spouses",
+          emptyMessage: "No linked spouses yet.",
+          getLinks: () => draftProfile.linkedSpouses,
+          setLinks: (links) => {
+            draftProfile.linkedSpouses = [...links];
+          },
+        }),
+      );
+    } else if (renderer.config.key === "children") {
+      relationshipLinkers.push(
+        createMultiRelationshipLinker(renderer, {
+          label: "Linked children",
+          emptyMessage: "No linked children yet.",
+          getLinks: () => draftProfile.linkedChildren,
+          setLinks: (links) => {
+            draftProfile.linkedChildren = [...links];
+          },
+        }),
+      );
+    }
+  }
+
   profileFieldsContainer.replaceChildren(...fieldRenderers.map((renderer) => renderer.container));
+  refreshRelationshipLinkers();
 
   updateProfileSaveButtonState();
 
@@ -1085,6 +1382,13 @@ export function initializeIndividualsPage(): void {
     profileSaveButton.setAttribute("aria-busy", profileSaving ? "true" : "false");
   }
 
+  function markProfileDirty(): void {
+    profileDirty = true;
+    if (profileFeedback) {
+      profileFeedback.textContent = "Changes not saved yet.";
+    }
+  }
+
   function refreshProfileInputs(): void {
     for (const renderer of fieldRenderers) {
       const value = getProfileFieldValue(draftProfile, renderer.config.key);
@@ -1092,6 +1396,7 @@ export function initializeIndividualsPage(): void {
       renderer.setActiveKey(serializeFieldValue(renderer.config, value));
       renderer.setError(null);
     }
+    refreshRelationshipLinkers();
   }
 
   function refreshProfileSuggestions(): void {
@@ -1124,6 +1429,7 @@ export function initializeIndividualsPage(): void {
     if (profileFeedback) {
       profileFeedback.textContent = "";
     }
+    refreshRelationshipLinkers();
     updateProfileSaveButtonState();
   }
 
@@ -1163,10 +1469,7 @@ export function initializeIndividualsPage(): void {
 
     if (!areFieldValuesEqual(renderer.config, sanitized, currentValue)) {
       setProfileField(draftProfile, renderer.config.key, cloneFieldValue(sanitized));
-      profileDirty = true;
-      if (profileFeedback) {
-        profileFeedback.textContent = "Changes not saved yet.";
-      }
+      markProfileDirty();
     }
 
     const activeKey = serializeFieldValue(renderer.config, getProfileFieldValue(draftProfile, renderer.config.key));
@@ -1179,10 +1482,7 @@ export function initializeIndividualsPage(): void {
     const currentValue = getProfileFieldValue(draftProfile, renderer.config.key);
     if (!areFieldValuesEqual(renderer.config, sanitized, currentValue)) {
       setProfileField(draftProfile, renderer.config.key, cloneFieldValue(sanitized));
-      profileDirty = true;
-      if (profileFeedback) {
-        profileFeedback.textContent = "Changes not saved yet.";
-      }
+      markProfileDirty();
     }
     renderer.setValue(cloneFieldValue(sanitized));
     renderer.setActiveKey(serializeFieldValue(renderer.config, sanitized));
