@@ -28,14 +28,19 @@ const baseRecord: IndividualRecord = {
   sources: [],
 };
 
-function buildRecord(id: string, individualId: string, dayOffset: number): StoredRecord {
+function buildRecord(
+  id: string,
+  individualId: string,
+  dayOffset: number,
+  overrides: Partial<IndividualRecord> = {},
+): StoredRecord {
   const createdAt = new Date(Date.UTC(2024, 0, 1 + dayOffset)).toISOString();
   return {
     id,
     individualId,
     createdAt,
     summary: `Record ${id}`,
-    record: { ...baseRecord, extractedAt: createdAt },
+    record: { ...baseRecord, extractedAt: createdAt, ...overrides } as IndividualRecord,
   } satisfies StoredRecord;
 }
 
@@ -54,16 +59,27 @@ function buildIndividual(id: string, roleId: string | null): StoredIndividual {
 }
 
 describe("filterRecordsByCriteria", () => {
-  const linkedRoleIndividual = buildIndividual("ind-1", "role-1");
-  const linkedNoRoleIndividual = buildIndividual("ind-2", null);
-  const individuals = [linkedRoleIndividual, linkedNoRoleIndividual];
-  const individualMap = new Map(individuals.map((individual) => [individual.id, individual]));
+  function createTestData() {
+    const linkedRoleIndividual = buildIndividual("ind-1", "role-1");
+    const linkedNoRoleIndividual = buildIndividual("ind-2", null);
+    const individuals = [linkedRoleIndividual, linkedNoRoleIndividual];
+    const individualMap = new Map(individuals.map((individual) => [individual.id, individual]));
+    const records = [
+      buildRecord("record-1", linkedRoleIndividual.id, 0),
+      buildRecord("record-2", linkedNoRoleIndividual.id, 1),
+      buildRecord("record-3", "orphan", 2),
+    ];
+    const roleLabels = new Map([["role-1", "Role One"]]);
 
-  const records = [
-    buildRecord("record-1", linkedRoleIndividual.id, 0),
-    buildRecord("record-2", linkedNoRoleIndividual.id, 1),
-    buildRecord("record-3", "orphan", 2),
-  ];
+    return {
+      linkedRoleIndividual,
+      linkedNoRoleIndividual,
+      individuals,
+      individualMap,
+      records,
+      roleLabels,
+    };
+  }
 
   const baseFilters: FilterCriteria = {
     search: "",
@@ -76,10 +92,11 @@ describe("filterRecordsByCriteria", () => {
   };
 
   it("returns only linked records when link status is set to linked", () => {
+    const { records, individualMap, roleLabels } = createTestData();
     const result = filterRecordsByCriteria(records, individualMap, {
       ...baseFilters,
       linkStatus: "linked",
-    });
+    }, { roleLabels });
 
     expect(result.records).toHaveLength(2);
     expect(result.records.map((record) => record.id)).toEqual(
@@ -88,30 +105,33 @@ describe("filterRecordsByCriteria", () => {
   });
 
   it("returns only unlinked records when link status is set to unlinked", () => {
+    const { records, individualMap, roleLabels } = createTestData();
     const result = filterRecordsByCriteria(records, individualMap, {
       ...baseFilters,
       linkStatus: "unlinked",
-    });
+    }, { roleLabels });
 
     expect(result.records).toHaveLength(1);
     expect(result.records[0]?.id).toBe("record-3");
   });
 
   it("filters by a specific role when provided", () => {
+    const { records, individualMap, roleLabels } = createTestData();
     const result = filterRecordsByCriteria(records, individualMap, {
       ...baseFilters,
       roleId: "role-1",
-    });
+    }, { roleLabels });
 
     expect(result.records).toHaveLength(1);
     expect(result.records[0]?.id).toBe("record-1");
   });
 
   it("includes records without a role when filtering for unassigned roles", () => {
+    const { records, individualMap, roleLabels } = createTestData();
     const result = filterRecordsByCriteria(records, individualMap, {
       ...baseFilters,
       roleId: NO_ROLE_FILTER_VALUE,
-    });
+    }, { roleLabels });
 
     expect(result.records).toHaveLength(2);
     expect(result.records.map((record) => record.id)).toEqual(
@@ -120,13 +140,56 @@ describe("filterRecordsByCriteria", () => {
   });
 
   it("combines role and link status filters", () => {
+    const { records, individualMap, roleLabels } = createTestData();
     const result = filterRecordsByCriteria(records, individualMap, {
       ...baseFilters,
       linkStatus: "linked",
       roleId: NO_ROLE_FILTER_VALUE,
-    });
+    }, { roleLabels });
 
     expect(result.records).toHaveLength(1);
     expect(result.records[0]?.id).toBe("record-2");
+  });
+
+  it("matches search terms against individual profile fields", () => {
+    const { records, individualMap, roleLabels, linkedRoleIndividual } = createTestData();
+    linkedRoleIndividual.profile.surname = "Example";
+
+    const result = filterRecordsByCriteria(records, individualMap, {
+      ...baseFilters,
+      search: "Example",
+    }, { roleLabels });
+
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0]?.id).toBe("record-1");
+  });
+
+  it("matches search terms against individual sex", () => {
+    const { individualMap, roleLabels, linkedRoleIndividual } = createTestData();
+    linkedRoleIndividual.profile.sex = "F";
+    const dataset = [
+      buildRecord("record-4", linkedRoleIndividual.id, 3, { sex: "F" }),
+      buildRecord("record-5", "orphan", 4),
+    ];
+
+    const result = filterRecordsByCriteria(dataset, individualMap, {
+      ...baseFilters,
+      search: "female",
+    }, { roleLabels });
+
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0]?.id).toBe("record-4");
+  });
+
+  it("matches search terms against role labels", () => {
+    const { records, individualMap, roleLabels } = createTestData();
+
+    const result = filterRecordsByCriteria(records, individualMap, {
+      ...baseFilters,
+      search: "Role One",
+    }, { roleLabels });
+
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0]?.id).toBe("record-1");
   });
 });

@@ -52,6 +52,10 @@ interface RecordFilterCriteria {
 const UNLINKED_FILTER_VALUE = "__unlinked__";
 export const NO_ROLE_FILTER_VALUE = "__no_role__";
 
+interface RecordFilterOptions {
+  roleLabels?: Map<string, string>;
+}
+
 interface CsvImportRow {
   index: number;
   cells: string[];
@@ -1839,6 +1843,7 @@ export function initializeRecordsPage(): void {
 
     const commandBar = document.querySelector<HTMLElement>(".command-bar");
     const individualMap = new Map(state.individuals.map((individual) => [individual.id, individual]));
+    const roleLabelMap = new Map(state.roles.map((role) => [role.id, role.label]));
     const unlinkedCount = countUnlinkedRecords(state.records, individualMap);
 
     if (!recordCount) {
@@ -1885,6 +1890,7 @@ export function initializeRecordsPage(): void {
       state.records,
       individualMap,
       normalizedFilters,
+      { roleLabels: roleLabelMap },
     );
 
     updateCommandBarSummary(commandBar, {
@@ -2562,6 +2568,7 @@ export function filterRecordsByCriteria(
   records: StoredRecord[],
   individualMap: Map<string, StoredIndividual>,
   filters: RecordFilterCriteria,
+  options: RecordFilterOptions = {},
 ): FilteredRecordsResult {
   const filtered: StoredRecord[] = [];
   const topConfidence = new Map<string, { field: string; value: number } | null>();
@@ -2569,6 +2576,7 @@ export function filterRecordsByCriteria(
   const minConfidence = Math.min(1, Math.max(0, filters.minConfidence));
   const startTime = filters.startDate ? Date.parse(`${filters.startDate}T00:00:00Z`) : Number.NaN;
   const endTime = filters.endDate ? Date.parse(`${filters.endDate}T23:59:59Z`) : Number.NaN;
+  const roleLabels = options.roleLabels ?? new Map<string, string>();
 
   for (const record of records) {
     const linkedIndividual = individualMap.get(record.individualId) ?? null;
@@ -2618,15 +2626,89 @@ export function filterRecordsByCriteria(
     }
 
     if (searchTerm) {
-      const haystack = [
-        record.summary,
-        record.record.givenNames.join(" "),
-        record.record.surname ?? "",
-        record.record.sourceUrl ?? "",
-        linkedIndividual?.name ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
+      const haystackParts: string[] = [];
+      const addToHaystack = (value: unknown): void => {
+        if (!value) {
+          return;
+        }
+
+        if (Array.isArray(value)) {
+          for (const entry of value) {
+            addToHaystack(entry);
+          }
+          return;
+        }
+
+        if (typeof value === "string") {
+          const normalized = value.trim();
+          if (normalized.length) {
+            haystackParts.push(normalized);
+          }
+        }
+      };
+
+      const addSexTokens = (sex?: IndividualRecord["sex"]): void => {
+        if (!sex) {
+          return;
+        }
+
+        const tokens: string[] = [];
+
+        switch (sex) {
+          case "M":
+            tokens.push("m", "male", "man");
+            break;
+          case "F":
+            tokens.push("f", "female", "woman");
+            break;
+          case "U":
+            tokens.push("u", "unknown", "unspecified", "undetermined");
+            break;
+        }
+
+        for (const token of tokens) {
+          addToHaystack(token);
+        }
+      };
+
+      addToHaystack(record.summary);
+      addToHaystack(record.record.givenNames);
+      addToHaystack(record.record.surname);
+      addToHaystack(record.record.maidenName);
+      addToHaystack(record.record.aliases);
+      addSexTokens(record.record.sex);
+      addToHaystack(record.record.sourceUrl);
+      addToHaystack(record.record.occupation);
+      addToHaystack(record.record.religion);
+      addToHaystack(record.record.notes);
+      addToHaystack(Object.values(record.record.parents ?? {}));
+      addToHaystack(record.record.spouses);
+      addToHaystack(record.record.children);
+      addToHaystack(record.record.siblings);
+
+      if (linkedIndividual) {
+        addToHaystack(linkedIndividual.name);
+        addToHaystack(linkedIndividual.notes);
+
+        const profile = linkedIndividual.profile;
+        addToHaystack(profile.givenNames);
+        addToHaystack(profile.surname);
+        addToHaystack(profile.maidenName);
+        addToHaystack(profile.aliases);
+        addSexTokens(profile.sex);
+        addToHaystack(profile.occupation);
+        addToHaystack(profile.religion);
+        addToHaystack(profile.notes);
+        addToHaystack(Object.values(profile.parents ?? {}));
+        addToHaystack(profile.spouses);
+        addToHaystack(profile.children);
+        addToHaystack(profile.siblings);
+      }
+
+      const roleLabel = linkedIndividual?.roleId ? roleLabels.get(linkedIndividual.roleId) ?? "" : "";
+      addToHaystack(roleLabel);
+
+      const haystack = haystackParts.join(" ").toLowerCase();
 
       if (!haystack.includes(searchTerm)) {
         continue;
