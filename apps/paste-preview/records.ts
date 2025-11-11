@@ -1,6 +1,6 @@
 import { extractIndividual, type ExtractOptions } from "../../extract";
 import { scoreConfidence } from "../../confidence";
-import type { IndividualRecord } from "../../schema";
+import { IndividualRecordSchema, type IndividualRecord } from "../../schema";
 import {
   clearRecords,
   createIndividual,
@@ -97,6 +97,10 @@ type ExtractionTrigger = "auto" | "manual" | "sample" | "load" | "reset" | "impo
 interface RecordsElements {
   htmlInput: HTMLTextAreaElement;
   jsonOutput: HTMLDivElement;
+  jsonEditor: HTMLTextAreaElement;
+  jsonEditButton: HTMLButtonElement;
+  jsonApplyButton: HTMLButtonElement;
+  jsonCancelButton: HTMLButtonElement;
   errorBox: HTMLDivElement;
   confidenceList: HTMLDivElement;
   toggleSourcesButton: HTMLButtonElement;
@@ -528,6 +532,10 @@ export function initializeRecordsPage(): void {
   const {
     htmlInput,
     jsonOutput,
+    jsonEditor,
+    jsonEditButton,
+    jsonApplyButton,
+    jsonCancelButton,
     errorBox,
     confidenceList,
     toggleSourcesButton,
@@ -585,6 +593,7 @@ export function initializeRecordsPage(): void {
   let lastHighlightDocument = "";
   let showingSources = false;
   let suggestedName = "";
+  let isJsonEditing = false;
   let autoExtractEnabled = true;
   let pendingExtraction: number | null = null;
   let lastExtractionTimestamp: string | null = null;
@@ -681,6 +690,31 @@ export function initializeRecordsPage(): void {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !importModal.hidden) {
       closeImportModal();
+    }
+  });
+
+  jsonEditButton.addEventListener("click", () => {
+    startJsonEditing();
+  });
+
+  jsonCancelButton.addEventListener("click", () => {
+    cancelJsonEditing();
+
+    if (currentRecord) {
+      renderJsonRecord(currentRecord);
+    } else {
+      resetOutputs();
+    }
+  });
+
+  jsonApplyButton.addEventListener("click", () => {
+    applyJsonEdits();
+  });
+
+  jsonEditor.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      applyJsonEdits();
     }
   });
 
@@ -1257,10 +1291,94 @@ export function initializeRecordsPage(): void {
     }
   }
 
+  function setJsonEditing(active: boolean): void {
+    if (isJsonEditing === active) {
+      return;
+    }
+
+    isJsonEditing = active;
+    jsonEditor.hidden = !active;
+    jsonApplyButton.hidden = !active;
+    jsonCancelButton.hidden = !active;
+    jsonOutput.hidden = active;
+    jsonEditButton.hidden = active;
+
+    if (active) {
+      jsonEditor.focus();
+    }
+  }
+
+  function startJsonEditing(): void {
+    if (!currentRecord) {
+      setFeedback("Extract a record before editing JSON.");
+      return;
+    }
+
+    jsonEditor.value = JSON.stringify(currentRecord, null, 2);
+    setJsonEditing(true);
+  }
+
+  function cancelJsonEditing(): void {
+    if (!isJsonEditing) {
+      return;
+    }
+
+    setJsonEditing(false);
+  }
+
+  function applyJsonEdits(): void {
+    if (!isJsonEditing) {
+      return;
+    }
+
+    const trimmed = jsonEditor.value.trim();
+
+    if (!trimmed) {
+      setFeedback("Provide JSON before applying changes.");
+      jsonEditor.focus();
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      const record = IndividualRecordSchema.parse(parsed);
+      currentRecord = record;
+
+      setJsonEditing(false);
+      renderJsonRecord(record);
+
+      const scores = scoreConfidence(record);
+      renderConfidence(record, scores);
+      updateHighlight(record);
+
+      suggestedName = getSuggestedIndividualName(record);
+      if (saveModeNew.checked && !saveModeNew.disabled) {
+        newIndividualInput.value = suggestedName;
+      }
+
+      renderMatchSuggestions(record);
+      if (Array.isArray(record.provenance)) {
+        provenanceCount.hidden = false;
+        provenanceCount.textContent = `${record.provenance.length} provenance span${
+          record.provenance.length === 1 ? "" : "s"
+        }`;
+      } else {
+        provenanceCount.hidden = true;
+        provenanceCount.textContent = "";
+      }
+      updateSavePanel();
+      setFeedback("Updated record from edited JSON.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setFeedback(`Invalid JSON: ${message}`);
+    }
+  }
+
   function renderJsonRecord(record: IndividualRecord): void {
     const json = JSON.stringify(record, null, 2);
     jsonOutput.innerHTML = `<pre class="json-content">${highlightJson(json)}</pre>`;
     jsonOutput.dataset.empty = "false";
+    jsonEditButton.disabled = false;
   }
 
   function buildFieldRows(record: IndividualRecord, scores: ConfidenceScores): FieldRow[] {
@@ -1791,6 +1909,11 @@ export function initializeRecordsPage(): void {
 
     saveButton.disabled = !hasRecord || isProcessingImportQueue;
     saveModeNew.disabled = !hasRecord || isProcessingImportQueue;
+    jsonEditButton.disabled = !hasRecord || isProcessingImportQueue;
+
+    if ((isProcessingImportQueue || !hasRecord) && isJsonEditing) {
+      cancelJsonEditing();
+    }
 
     const shouldDisableExisting = !hasRecord || !hasIndividuals || isProcessingImportQueue;
     saveModeExisting.disabled = shouldDisableExisting;
@@ -1913,8 +2036,15 @@ export function initializeRecordsPage(): void {
   }
 
   function resetOutputs(): void {
+    cancelJsonEditing();
     jsonOutput.dataset.empty = "true";
     jsonOutput.textContent = "Paste HTML to see extracted fields.";
+    jsonOutput.hidden = false;
+    jsonEditor.value = "";
+    jsonEditButton.disabled = true;
+    jsonEditButton.hidden = false;
+    jsonApplyButton.hidden = true;
+    jsonCancelButton.hidden = true;
     errorBox.hidden = true;
     errorBox.textContent = "";
     confidenceList.replaceChildren();
@@ -1947,6 +2077,10 @@ export function initializeRecordsPage(): void {
       updateSavePanel();
       setFeedback("Paste HTML to extract a record.");
       return;
+    }
+
+    if (isJsonEditing) {
+      cancelJsonEditing();
     }
 
     try {
@@ -2001,8 +2135,15 @@ export function initializeRecordsPage(): void {
       const message = err instanceof Error ? err.message : String(err);
       currentRecord = null;
       lastHighlightDocument = "";
+      cancelJsonEditing();
       jsonOutput.dataset.empty = "true";
       jsonOutput.textContent = "Extraction failed.";
+      jsonOutput.hidden = false;
+      jsonEditor.value = "";
+      jsonEditButton.disabled = true;
+      jsonEditButton.hidden = false;
+      jsonApplyButton.hidden = true;
+      jsonCancelButton.hidden = true;
       errorBox.hidden = false;
       errorBox.textContent = message;
       confidenceList.replaceChildren();
@@ -2339,6 +2480,10 @@ export function initializeRecordsPage(): void {
 function getRecordsElements(): RecordsElements | null {
   const htmlInput = document.getElementById("html-input");
   const jsonOutput = document.getElementById("json-output");
+  const jsonEditor = document.getElementById("json-editor");
+  const jsonEditButton = document.getElementById("edit-json-button");
+  const jsonApplyButton = document.getElementById("apply-json-button");
+  const jsonCancelButton = document.getElementById("cancel-json-button");
   const errorBox = document.getElementById("error");
   const confidenceList = document.getElementById("confidence");
   const toggleSourcesButton = document.getElementById("toggle-sources");
@@ -2394,6 +2539,10 @@ function getRecordsElements(): RecordsElements | null {
     !(
       htmlInput instanceof HTMLTextAreaElement &&
       jsonOutput instanceof HTMLDivElement &&
+      jsonEditor instanceof HTMLTextAreaElement &&
+      jsonEditButton instanceof HTMLButtonElement &&
+      jsonApplyButton instanceof HTMLButtonElement &&
+      jsonCancelButton instanceof HTMLButtonElement &&
       errorBox instanceof HTMLDivElement &&
       confidenceList instanceof HTMLDivElement &&
       toggleSourcesButton instanceof HTMLButtonElement &&
@@ -2450,6 +2599,10 @@ function getRecordsElements(): RecordsElements | null {
   return {
     htmlInput,
     jsonOutput,
+    jsonEditor,
+    jsonEditButton,
+    jsonApplyButton,
+    jsonCancelButton,
     errorBox,
     confidenceList,
     toggleSourcesButton,

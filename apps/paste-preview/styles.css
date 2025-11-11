@@ -841,6 +841,29 @@ button[type="submit"]:focus-visible,
   overflow: auto;
 }
 
+.json-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.json-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.json-editor {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  box-sizing: border-box;
+}
+
 .confidence-list {
   display: grid;
   gap: 12px;
