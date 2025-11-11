@@ -1059,6 +1059,44 @@ export async function createRecord(options: {
   return storedRecord;
 }
 
+export async function updateRecord(options: {
+  id: string;
+  summary?: string;
+  record?: IndividualRecord;
+}): Promise<StoredRecord | null> {
+  await initialization;
+  const { id, summary, record } = options;
+
+  const next = cloneState(state);
+  const target = next.records.find((item) => item.id === id);
+
+  if (!target) {
+    return null;
+  }
+
+  let changed = false;
+
+  if (typeof summary !== "undefined") {
+    const normalizedSummary = summary.trim();
+    if (target.summary !== normalizedSummary) {
+      target.summary = normalizedSummary;
+      changed = true;
+    }
+  }
+
+  if (typeof record !== "undefined") {
+    target.record = cloneRecord(record);
+    changed = true;
+  }
+
+  if (!changed) {
+    return target;
+  }
+
+  await commit(next);
+  return target;
+}
+
 export async function deleteRecord(id: string): Promise<void> {
   await initialization;
   const next = cloneState(state);
