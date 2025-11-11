@@ -147,21 +147,21 @@ export function initializeTreePage(): void {
     wrapper.appendChild(header);
 
     if (details.length || note) {
-      const detailsWrapper = document.createElement("div");
+      const detailsWrapper = document.createElement("ul");
       detailsWrapper.className = "tree-person-details";
 
       for (const detail of details) {
-        const info = document.createElement("span");
-        info.className = "tree-notes";
-        info.textContent = detail;
-        detailsWrapper.appendChild(info);
+        const item = document.createElement("li");
+        item.className = "tree-person-detail";
+        item.textContent = detail;
+        detailsWrapper.appendChild(item);
       }
 
       if (note) {
-        const info = document.createElement("span");
-        info.className = "tree-notes";
-        info.textContent = note;
-        detailsWrapper.appendChild(info);
+        const item = document.createElement("li");
+        item.className = "tree-person-detail";
+        item.textContent = note;
+        detailsWrapper.appendChild(item);
       }
 
       wrapper.appendChild(detailsWrapper);
