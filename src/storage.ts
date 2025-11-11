@@ -61,7 +61,7 @@ export interface StoredIndividual {
 
 export interface StoredRecord {
   id: string;
-  individualId: string;
+  individualId: string; // empty string indicates an unlinked record
   createdAt: string;
   summary: string;
   record: IndividualRecord;
@@ -823,7 +823,14 @@ export async function deleteIndividual(id: string): Promise<void> {
 
   const now = new Date().toISOString();
 
-  next.records = next.records.filter((record) => record.individualId !== id);
+  let recordsUpdated = false;
+
+  for (const record of next.records) {
+    if (record.individualId === id) {
+      record.individualId = "";
+      recordsUpdated = true;
+    }
+  }
 
   for (const individual of next.individuals) {
     let profileChanged = false;
@@ -855,6 +862,10 @@ export async function deleteIndividual(id: string): Promise<void> {
       individual.profileUpdatedAt = now;
       individual.updatedAt = now;
     }
+  }
+
+  if (recordsUpdated) {
+    next.records = [...next.records];
   }
 
   await commit(next);
