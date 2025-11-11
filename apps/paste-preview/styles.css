@@ -976,6 +976,12 @@ iframe {
   gap: 8px;
 }
 
+.filter-field-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .slider-control {
   display: flex;
   align-items: center;

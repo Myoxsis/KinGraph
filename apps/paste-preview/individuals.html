@@ -222,6 +222,62 @@
                   </div>
                   <form id="individuals-filters" class="records-filters" autocomplete="off">
                     <div class="filter-field">
+                      <label for="individual-filter-name">Name</label>
+                      <input
+                        type="search"
+                        id="individual-filter-name"
+                        name="name"
+                        placeholder="Search given names"
+                      />
+                    </div>
+                    <div class="filter-field">
+                      <label for="individual-filter-surname">Surname</label>
+                      <input
+                        type="search"
+                        id="individual-filter-surname"
+                        name="surname"
+                        placeholder="Search surnames"
+                      />
+                    </div>
+                    <div class="filter-field">
+                      <label for="individual-filter-birth-from">Birth year</label>
+                      <div class="filter-field-group">
+                        <input
+                          type="number"
+                          id="individual-filter-birth-from"
+                          name="birth-from"
+                          placeholder="From"
+                          inputmode="numeric"
+                        />
+                        <input
+                          type="number"
+                          id="individual-filter-birth-to"
+                          name="birth-to"
+                          placeholder="To"
+                          inputmode="numeric"
+                        />
+                      </div>
+                    </div>
+                    <div class="filter-field">
+                      <label for="individual-filter-death-from">Death year</label>
+                      <div class="filter-field-group">
+                        <input
+                          type="number"
+                          id="individual-filter-death-from"
+                          name="death-from"
+                          placeholder="From"
+                          inputmode="numeric"
+                        />
+                        <input
+                          type="number"
+                          id="individual-filter-death-to"
+                          name="death-to"
+                          placeholder="To"
+                          inputmode="numeric"
+                        />
+                      </div>
+                    </div>
+                    <div class="filter-field">
                       <label for="individual-filter-role">Role</label>
                       <select id="individual-filter-role" name="role">
                         <option value="">All roles</option>
