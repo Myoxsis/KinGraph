@@ -60,6 +60,8 @@ describe("deleteIndividual", () => {
     const state = getState();
     expect(state.individuals.map((item) => item.id)).not.toContain(alice.id);
     expect(state.records.some((record) => record.individualId === alice.id)).toBe(false);
+    expect(state.records).toHaveLength(1);
+    expect(state.records[0]?.individualId).toBe("");
 
     const bobAfter = state.individuals.find((item) => item.id === bob.id);
     expect(bobAfter).toBeDefined();
