@@ -100,6 +100,22 @@ type IndividualLinkStatusFilter = "all" | "linked" | "unlinked";
 interface IndividualFilterState {
   roleId: string;
   linkStatus: IndividualLinkStatusFilter;
+  name: string;
+  surname: string;
+  birthFrom: string;
+  birthTo: string;
+  deathFrom: string;
+  deathTo: string;
+}
+
+function parseYearInput(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 interface IndividualsElements {
@@ -128,6 +144,12 @@ interface IndividualsElements {
   workspaceSearchInput: HTMLInputElement;
   workspaceSearchClear: HTMLButtonElement | null;
   filtersForm: HTMLFormElement;
+  filterNameInput: HTMLInputElement;
+  filterSurnameInput: HTMLInputElement;
+  filterBirthFromInput: HTMLInputElement;
+  filterBirthToInput: HTMLInputElement;
+  filterDeathFromInput: HTMLInputElement;
+  filterDeathToInput: HTMLInputElement;
   filterRoleSelect: HTMLSelectElement;
   filterLinkStatusSelect: HTMLSelectElement;
   selectionToolbar: HTMLDivElement;
@@ -899,6 +921,12 @@ export function initializeIndividualsPage(): void {
     workspaceSearchInput,
     workspaceSearchClear,
     filtersForm,
+    filterNameInput,
+    filterSurnameInput,
+    filterBirthFromInput,
+    filterBirthToInput,
+    filterDeathFromInput,
+    filterDeathToInput,
     filterRoleSelect,
     filterLinkStatusSelect,
     selectionToolbar,
@@ -924,6 +952,12 @@ export function initializeIndividualsPage(): void {
   const individualFilters: IndividualFilterState = {
     roleId: filterRoleSelect.value || "",
     linkStatus: normalizeLinkStatusFilter(filterLinkStatusSelect.value),
+    name: filterNameInput.value.trim().toLowerCase(),
+    surname: filterSurnameInput.value.trim().toLowerCase(),
+    birthFrom: filterBirthFromInput.value.trim(),
+    birthTo: filterBirthToInput.value.trim(),
+    deathFrom: filterDeathFromInput.value.trim(),
+    deathTo: filterDeathToInput.value.trim(),
   };
 
   const maybeSearchHandle = initializeWorkspaceSearch({
@@ -1346,6 +1380,36 @@ export function initializeIndividualsPage(): void {
     populateRoleFilterOptions(sortedRoles);
   }
 
+  filterNameInput.addEventListener("input", () => {
+    individualFilters.name = filterNameInput.value.trim().toLowerCase();
+    renderIndividuals();
+  });
+
+  filterSurnameInput.addEventListener("input", () => {
+    individualFilters.surname = filterSurnameInput.value.trim().toLowerCase();
+    renderIndividuals();
+  });
+
+  filterBirthFromInput.addEventListener("input", () => {
+    individualFilters.birthFrom = filterBirthFromInput.value.trim();
+    renderIndividuals();
+  });
+
+  filterBirthToInput.addEventListener("input", () => {
+    individualFilters.birthTo = filterBirthToInput.value.trim();
+    renderIndividuals();
+  });
+
+  filterDeathFromInput.addEventListener("input", () => {
+    individualFilters.deathFrom = filterDeathFromInput.value.trim();
+    renderIndividuals();
+  });
+
+  filterDeathToInput.addEventListener("input", () => {
+    individualFilters.deathTo = filterDeathToInput.value.trim();
+    renderIndividuals();
+  });
+
   filterRoleSelect.addEventListener("change", () => {
     individualFilters.roleId = filterRoleSelect.value || "";
     renderIndividuals();
@@ -1360,6 +1424,12 @@ export function initializeIndividualsPage(): void {
     window.requestAnimationFrame(() => {
       individualFilters.roleId = filterRoleSelect.value || "";
       individualFilters.linkStatus = normalizeLinkStatusFilter(filterLinkStatusSelect.value);
+      individualFilters.name = filterNameInput.value.trim().toLowerCase();
+      individualFilters.surname = filterSurnameInput.value.trim().toLowerCase();
+      individualFilters.birthFrom = filterBirthFromInput.value.trim();
+      individualFilters.birthTo = filterBirthToInput.value.trim();
+      individualFilters.deathFrom = filterDeathFromInput.value.trim();
+      individualFilters.deathTo = filterDeathToInput.value.trim();
       renderIndividuals();
     });
   });
@@ -1412,6 +1482,13 @@ export function initializeIndividualsPage(): void {
     }
 
     const searchQuery = individualSearchQuery;
+    const nameQuery = individualFilters.name;
+    const surnameQuery = individualFilters.surname;
+    const birthFromYear = parseYearInput(individualFilters.birthFrom);
+    const birthToYear = parseYearInput(individualFilters.birthTo);
+    const deathFromYear = parseYearInput(individualFilters.deathFrom);
+    const deathToYear = parseYearInput(individualFilters.deathTo);
+
     const filteredIndividuals = sortedIndividuals.filter((individual) => {
       const linked = linkedRecordsByIndividual.get(individual.id) ?? [];
 
@@ -1424,6 +1501,70 @@ export function initializeIndividualsPage(): void {
       }
 
       if (individualFilters.linkStatus === "unlinked" && linked.length > 0) {
+        return false;
+      }
+
+      if (nameQuery) {
+        const nameCandidates = new Set<string>();
+        nameCandidates.add(individual.name);
+        if (individual.profile.maidenName) {
+          nameCandidates.add(individual.profile.maidenName);
+        }
+        for (const given of individual.profile.givenNames) {
+          nameCandidates.add(given);
+        }
+        for (const alias of individual.profile.aliases) {
+          nameCandidates.add(alias);
+        }
+
+        const matchesName = Array.from(nameCandidates).some((candidate) =>
+          candidate.toLowerCase().includes(nameQuery),
+        );
+
+        if (!matchesName) {
+          return false;
+        }
+      }
+
+      if (surnameQuery) {
+        const surnameCandidates: string[] = [];
+        if (individual.profile.surname) {
+          surnameCandidates.push(individual.profile.surname);
+        }
+        if (individual.profile.maidenName) {
+          surnameCandidates.push(individual.profile.maidenName);
+        }
+        for (const alias of individual.profile.aliases) {
+          surnameCandidates.push(alias);
+        }
+        if (surnameCandidates.length === 0) {
+          surnameCandidates.push(individual.name);
+        }
+
+        const matchesSurname = surnameCandidates.some((candidate) =>
+          candidate.toLowerCase().includes(surnameQuery),
+        );
+
+        if (!matchesSurname) {
+          return false;
+        }
+      }
+
+      const birthYear = individual.profile.birth.year ?? null;
+      if (birthFromYear !== null && (birthYear === null || birthYear < birthFromYear)) {
+        return false;
+      }
+
+      if (birthToYear !== null && (birthYear === null || birthYear > birthToYear)) {
+        return false;
+      }
+
+      const deathYear = individual.profile.death.year ?? null;
+      if (deathFromYear !== null && (deathYear === null || deathYear < deathFromYear)) {
+        return false;
+      }
+
+      if (deathToYear !== null && (deathYear === null || deathYear > deathToYear)) {
         return false;
       }
 
@@ -1449,7 +1590,15 @@ export function initializeIndividualsPage(): void {
     });
 
     const hasActiveFilters =
-      Boolean(searchQuery) || Boolean(individualFilters.roleId) || individualFilters.linkStatus !== "all";
+      Boolean(searchQuery) ||
+      Boolean(individualFilters.roleId) ||
+      individualFilters.linkStatus !== "all" ||
+      Boolean(nameQuery) ||
+      Boolean(surnameQuery) ||
+      birthFromYear !== null ||
+      birthToYear !== null ||
+      deathFromYear !== null ||
+      deathToYear !== null;
 
     if (!filteredIndividuals.length) {
       renderedIndividualIds = [];
@@ -2328,6 +2477,12 @@ function getIndividualsElements(): IndividualsElements | null {
   const workspaceSearchInput = document.getElementById("workspace-search");
   const workspaceSearchClear = document.getElementById("workspace-search-clear");
   const filtersForm = document.getElementById("individuals-filters");
+  const filterNameInput = document.getElementById("individual-filter-name");
+  const filterSurnameInput = document.getElementById("individual-filter-surname");
+  const filterBirthFromInput = document.getElementById("individual-filter-birth-from");
+  const filterBirthToInput = document.getElementById("individual-filter-birth-to");
+  const filterDeathFromInput = document.getElementById("individual-filter-death-from");
+  const filterDeathToInput = document.getElementById("individual-filter-death-to");
   const filterRoleSelect = document.getElementById("individual-filter-role");
   const filterLinkStatusSelect = document.getElementById("individual-filter-link-status");
   const selectionToolbar = document.getElementById("individual-selection-actions");
@@ -2357,6 +2512,12 @@ function getIndividualsElements(): IndividualsElements | null {
       profileSaveButton instanceof HTMLButtonElement &&
       workspaceSearchInput instanceof HTMLInputElement &&
       filtersForm instanceof HTMLFormElement &&
+      filterNameInput instanceof HTMLInputElement &&
+      filterSurnameInput instanceof HTMLInputElement &&
+      filterBirthFromInput instanceof HTMLInputElement &&
+      filterBirthToInput instanceof HTMLInputElement &&
+      filterDeathFromInput instanceof HTMLInputElement &&
+      filterDeathToInput instanceof HTMLInputElement &&
       filterRoleSelect instanceof HTMLSelectElement &&
       filterLinkStatusSelect instanceof HTMLSelectElement &&
       selectionToolbar instanceof HTMLDivElement &&
@@ -2396,6 +2557,12 @@ function getIndividualsElements(): IndividualsElements | null {
     workspaceSearchClear:
       workspaceSearchClear instanceof HTMLButtonElement ? workspaceSearchClear : null,
     filtersForm,
+    filterNameInput,
+    filterSurnameInput,
+    filterBirthFromInput,
+    filterBirthToInput,
+    filterDeathFromInput,
+    filterDeathToInput,
     filterRoleSelect,
     filterLinkStatusSelect,
     selectionToolbar,
