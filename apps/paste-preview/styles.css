@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   line-height: 1.6;
   --bg: #f3f5f9;
@@ -19,6 +19,23 @@
   --radius-sm: 10px;
   --rail-width: 280px;
   --page-padding: clamp(24px, 6vw, 56px);
+  --json-key: #1d4ed8;
+  --json-string: #047857;
+  --json-number: #b45309;
+  --json-boolean: #9333ea;
+  --json-null: #be185d;
+  --json-plain: #1f2937;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --json-key: #93c5fd;
+    --json-string: #6ee7b7;
+    --json-number: #fbbf24;
+    --json-boolean: #c4b5fd;
+    --json-null: #f9a8d4;
+    --json-plain: #e5e7eb;
+  }
 }
 
 *,
@@ -839,6 +856,36 @@ button[type="submit"]:focus-visible,
   font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.85rem;
   overflow: auto;
+}
+
+.json-content {
+  margin: 0;
+  color: var(--json-plain);
+  background: transparent;
+}
+
+.json-content .token {
+  color: var(--json-plain);
+}
+
+.json-content .token-key {
+  color: var(--json-key);
+}
+
+.json-content .token-string {
+  color: var(--json-string);
+}
+
+.json-content .token-number {
+  color: var(--json-number);
+}
+
+.json-content .token-boolean {
+  color: var(--json-boolean);
+}
+
+.json-content .token-null {
+  color: var(--json-null);
 }
 
 .json-header {
