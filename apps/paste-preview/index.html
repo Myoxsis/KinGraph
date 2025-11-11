@@ -235,8 +235,21 @@
                     <span id="provenance-count" class="pill" hidden></span>
                   </header>
                   <div>
-                    <label for="json-output">Structured record</label>
+                    <div class="json-header">
+                      <label for="json-editor">Structured record</label>
+                      <div class="json-actions">
+                        <button type="button" id="edit-json-button" class="button-secondary" disabled>Edit JSON</button>
+                        <button type="button" id="apply-json-button" class="button-secondary" hidden>Apply changes</button>
+                        <button type="button" id="cancel-json-button" class="button-ghost" hidden>Cancel</button>
+                      </div>
+                    </div>
                     <div id="json-output" class="json-viewer" data-empty="true">Paste HTML to see extracted fields.</div>
+                    <textarea
+                      id="json-editor"
+                      class="json-viewer json-editor"
+                      aria-label="Structured record JSON editor"
+                      hidden
+                    ></textarea>
                   </div>
                   <div id="error" class="error" hidden></div>
                   <div>
