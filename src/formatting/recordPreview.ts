@@ -13,21 +13,21 @@ export function highlightJson(json: string): string {
     /(\"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\\"])*\"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
 
   return escaped.replace(jsonPattern, (match) => {
-    let cls = "text-slate-300";
+    let tokenClass = "token token-plain";
 
     if (/^\".*\":$/.test(match)) {
-      cls = "text-sky-400";
+      tokenClass = "token token-key";
     } else if (/^\".*\"$/.test(match)) {
-      cls = "text-emerald-300";
+      tokenClass = "token token-string";
     } else if (/true|false/.test(match)) {
-      cls = "text-orange-300";
+      tokenClass = "token token-boolean";
     } else if (/null/.test(match)) {
-      cls = "text-pink-300";
+      tokenClass = "token token-null";
     } else if (/^-?\d/.test(match)) {
-      cls = "text-amber-300";
+      tokenClass = "token token-number";
     }
 
-    return `<span class="${cls}">${match}</span>`;
+    return `<span class="${tokenClass}">${match}</span>`;
   });
 }
 
