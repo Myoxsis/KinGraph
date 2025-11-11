@@ -704,6 +704,20 @@ button[type="submit"]:focus-visible,
   box-shadow: none;
 }
 
+.button-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.button-ghost:hover,
+.button-ghost:focus-visible {
+  background: var(--surface-subtle);
+  color: var(--text);
+  border-color: var(--surface-subtle);
+}
+
 .command-button--ghost:hover,
 .command-button--ghost:focus-visible {
   background: var(--surface-subtle);
@@ -1068,6 +1082,41 @@ iframe {
   border: 1px solid var(--border);
   background: var(--surface);
   overflow: hidden;
+}
+
+.selection-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  margin-bottom: 12px;
+}
+
+.selection-toolbar-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.selection-toolbar-summary {
+  margin: 0;
+  font-weight: 600;
+}
+
+.selection-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.selection-toolbar-feedback {
+  min-height: 1rem;
 }
 
 .records-timeline {
@@ -1462,17 +1511,41 @@ iframe {
   border-bottom: 1px solid var(--border);
 }
 
+.data-table thead th.data-table-select {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.data-table thead th.data-table-select input {
+  transform: translateY(2px);
+}
+
 .data-table tbody td {
   padding: 18px;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
 
+.data-table tbody td.data-table-select {
+  text-align: center;
+  vertical-align: middle;
+  width: 1%;
+}
+
 .data-table tbody tr:hover {
   background: var(--surface-subtle);
 }
 
+.data-table tbody tr.is-checked {
+  background: var(--surface-subtle);
+}
+
 .data-table tbody tr.is-selected {
+  background: var(--accent-soft);
+}
+
+.data-table tbody tr.is-selected.is-checked {
   background: var(--accent-soft);
 }
 
