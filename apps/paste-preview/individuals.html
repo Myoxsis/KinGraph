@@ -181,6 +181,45 @@
                   <header>
                     <h2>Individuals</h2>
                   </header>
+                  <div
+                    id="individual-selection-actions"
+                    class="selection-toolbar"
+                    hidden
+                    aria-live="polite"
+                  >
+                    <div class="selection-toolbar-details">
+                      <p class="selection-toolbar-summary">
+                        <span id="individual-selection-count">0</span> selected
+                      </p>
+                      <span
+                        id="individual-selection-feedback"
+                        class="selection-toolbar-feedback supporting-text"
+                      ></span>
+                    </div>
+                    <div class="selection-toolbar-actions">
+                      <button
+                        type="button"
+                        id="individual-selection-download"
+                        class="button-secondary"
+                      >
+                        Download GEDCOM
+                      </button>
+                      <button
+                        type="button"
+                        id="individual-selection-delete"
+                        class="button-secondary"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        id="individual-selection-clear"
+                        class="button-ghost"
+                      >
+                        Clear selection
+                      </button>
+                    </div>
+                  </div>
                   <div class="table-wrapper">
                     <div id="individuals-list" class="individuals-list"></div>
                   </div>

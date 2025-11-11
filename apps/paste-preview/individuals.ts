@@ -14,7 +14,7 @@ import {
 import { formatTimestamp, getRecordSummary } from "./shared/utils";
 import { initializeWorkspaceSearch } from "./shared/search";
 import type { IndividualRecord } from "../../schema";
-import { generateIndividualGedcom } from "./shared/gedcom";
+import { generateGedcomDocument, generateIndividualGedcom } from "./shared/gedcom";
 
 const PROFILE_FIELD_KEYS = [
   "givenNames",
@@ -120,6 +120,12 @@ interface IndividualsElements {
   workspaceSearchForm: HTMLFormElement | null;
   workspaceSearchInput: HTMLInputElement;
   workspaceSearchClear: HTMLButtonElement | null;
+  selectionToolbar: HTMLDivElement;
+  selectionCount: HTMLSpanElement;
+  selectionFeedback: HTMLSpanElement | null;
+  selectionDownloadButton: HTMLButtonElement;
+  selectionDeleteButton: HTMLButtonElement;
+  selectionClearButton: HTMLButtonElement;
 }
 
 const PROFILE_FIELD_CONFIGS: FieldConfig[] = [
@@ -882,16 +888,26 @@ export function initializeIndividualsPage(): void {
     workspaceSearchForm,
     workspaceSearchInput,
     workspaceSearchClear,
+    selectionToolbar,
+    selectionCount,
+    selectionFeedback,
+    selectionDownloadButton,
+    selectionDeleteButton,
+    selectionClearButton,
   } = elements;
 
   let latestState = getState();
-  let selectedIndividualId: string | null = null;
+  let activeIndividualId: string | null = null;
+  const selectedIndividualIds = new Set<string>();
+  let renderedIndividualIds: string[] = [];
   let draftProfile: IndividualProfile = createEmptyProfile();
   let profileDirty = false;
   let profileSaving = false;
   let individualSearchQuery = "";
   let editModalOpen = false;
   let deletingIndividual = false;
+  let bulkDeleting = false;
+  let bulkExporting = false;
 
   const maybeSearchHandle = initializeWorkspaceSearch({
     elements: {
@@ -1222,11 +1238,11 @@ export function initializeIndividualsPage(): void {
   updateProfileSaveButtonState();
 
   function getSelectedIndividual(): typeof latestState.individuals[number] | null {
-    if (!selectedIndividualId) {
+    if (!activeIndividualId) {
       return null;
     }
 
-    return latestState.individuals.find((individual) => individual.id === selectedIndividualId) ?? null;
+    return latestState.individuals.find((individual) => individual.id === activeIndividualId) ?? null;
   }
 
   function getRoleLabel(roleId: string | null): string | null {
@@ -1295,27 +1311,18 @@ export function initializeIndividualsPage(): void {
     }
 
     if (!latestState.individuals.length) {
+      renderedIndividualIds = [];
+      if (selectedIndividualIds.size) {
+        selectedIndividualIds.clear();
+      }
       const empty = document.createElement("div");
       empty.className = "empty-state";
       empty.textContent = "No individuals yet. Save a record or create a person to get started.";
       list.replaceChildren(empty);
+      updateSelectionToolbar();
       return;
     }
 
-    const table = document.createElement("table");
-    table.className = "data-table";
-    const thead = document.createElement("thead");
-    const headerRow = document.createElement("tr");
-    for (const label of ["Name", "Role", "Linked records", "Updated", "Actions"]) {
-      const th = document.createElement("th");
-      th.scope = "col";
-      th.textContent = label;
-      headerRow.appendChild(th);
-    }
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement("tbody");
     const sortedIndividuals = [...latestState.individuals].sort((a, b) => a.name.localeCompare(b.name));
     const linkedRecordsByIndividual = new Map<string, StoredRecord[]>();
 
@@ -1351,19 +1358,66 @@ export function initializeIndividualsPage(): void {
       : sortedIndividuals;
 
     if (!filteredIndividuals.length) {
+      renderedIndividualIds = [];
       const empty = document.createElement("div");
       empty.className = "empty-state";
       empty.textContent = "No individuals match your search.";
       list.replaceChildren(empty);
+      updateSelectionToolbar();
       return;
     }
+
+    renderedIndividualIds = filteredIndividuals.map((individual) => individual.id);
+    const table = document.createElement("table");
+    table.className = "data-table";
+
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    const selectHeader = document.createElement("th");
+    selectHeader.scope = "col";
+    selectHeader.className = "data-table-select";
+    const selectAllInput = document.createElement("input");
+    selectAllInput.type = "checkbox";
+    selectAllInput.dataset.action = "toggle-all-individuals";
+    selectAllInput.setAttribute("aria-label", "Select all individuals");
+    const visibleSelectedCount = renderedIndividualIds.filter((id) => selectedIndividualIds.has(id)).length;
+    if (renderedIndividualIds.length && visibleSelectedCount === renderedIndividualIds.length) {
+      selectAllInput.checked = true;
+    }
+    selectAllInput.indeterminate =
+      renderedIndividualIds.length > 0 &&
+      visibleSelectedCount > 0 &&
+      visibleSelectedCount < renderedIndividualIds.length;
+    selectAllInput.disabled = renderedIndividualIds.length === 0;
+    selectHeader.appendChild(selectAllInput);
+    headerRow.appendChild(selectHeader);
+
+    for (const label of ["Name", "Role", "Linked records", "Updated", "Actions"]) {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = label;
+      headerRow.appendChild(th);
+    }
+
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
 
     for (const individual of filteredIndividuals) {
       const row = document.createElement("tr");
       row.dataset.individualId = individual.id;
-      if (individual.id === selectedIndividualId) {
-        row.classList.add("is-selected");
-      }
+      row.classList.toggle("is-selected", individual.id === activeIndividualId);
+      row.classList.toggle("is-checked", selectedIndividualIds.has(individual.id));
+
+      const selectCell = document.createElement("td");
+      selectCell.className = "data-table-select";
+      const selectInput = document.createElement("input");
+      selectInput.type = "checkbox";
+      selectInput.dataset.individualId = individual.id;
+      selectInput.checked = selectedIndividualIds.has(individual.id);
+      selectInput.setAttribute("aria-label", `Select ${individual.name}`);
+      selectCell.appendChild(selectInput);
 
       const nameCell = document.createElement("td");
       const title = document.createElement("div");
@@ -1431,12 +1485,103 @@ export function initializeIndividualsPage(): void {
       editButton.dataset.individualId = individual.id;
       actionsCell.appendChild(editButton);
 
-      row.append(nameCell, roleCell, linkedCell, updatedCell, actionsCell);
+      row.append(selectCell, nameCell, roleCell, linkedCell, updatedCell, actionsCell);
       tbody.appendChild(row);
     }
 
     table.appendChild(tbody);
     list.replaceChildren(table);
+    updateSelectionToolbar();
+  }
+
+  function updateSelectionToolbar(): void {
+    const count = selectedIndividualIds.size;
+    const hasMessage = Boolean(selectionFeedback?.textContent);
+    const shouldHide = count === 0 && !hasMessage && !bulkDeleting && !bulkExporting;
+    selectionToolbar.hidden = shouldHide;
+    selectionToolbar.setAttribute("aria-hidden", shouldHide ? "true" : "false");
+    selectionCount.textContent = count.toString();
+    selectionDownloadButton.disabled = count === 0 || bulkExporting;
+    selectionDeleteButton.disabled = count === 0 || bulkDeleting;
+    selectionClearButton.disabled = count === 0 || bulkDeleting || bulkExporting;
+
+    const headerToggle = list.querySelector<HTMLInputElement>(
+      'thead input[data-action="toggle-all-individuals"]',
+    );
+    if (headerToggle) {
+      const visibleSelected = renderedIndividualIds.filter((id) =>
+        selectedIndividualIds.has(id),
+      ).length;
+      headerToggle.disabled = renderedIndividualIds.length === 0;
+      headerToggle.checked =
+        renderedIndividualIds.length > 0 && visibleSelected === renderedIndividualIds.length;
+      headerToggle.indeterminate =
+        renderedIndividualIds.length > 0 &&
+        visibleSelected > 0 &&
+        visibleSelected < renderedIndividualIds.length;
+    }
+
+    if (selectionFeedback && count === 0 && !hasMessage) {
+      selectionFeedback.textContent = "";
+    }
+  }
+
+  function handleRowSelectionChange(individualId: string, checked: boolean): void {
+    if (checked) {
+      selectedIndividualIds.add(individualId);
+    } else {
+      selectedIndividualIds.delete(individualId);
+    }
+
+    if (!selectedIndividualIds.size) {
+      clearSelectionFeedback();
+    }
+
+    renderIndividuals();
+  }
+
+  function handleToggleAllChange(checked: boolean): void {
+    if (!renderedIndividualIds.length) {
+      return;
+    }
+
+    for (const id of renderedIndividualIds) {
+      if (checked) {
+        selectedIndividualIds.add(id);
+      } else {
+        selectedIndividualIds.delete(id);
+      }
+    }
+
+    if (!selectedIndividualIds.size) {
+      clearSelectionFeedback();
+    }
+
+    renderIndividuals();
+  }
+
+  function clearSelectionFeedback(): void {
+    if (selectionFeedback) {
+      selectionFeedback.textContent = "";
+    }
+  }
+
+  function setSelectionFeedback(message: string): void {
+    if (selectionFeedback) {
+      selectionFeedback.textContent = message;
+    }
+    updateSelectionToolbar();
+  }
+
+  function buildSelectionGedcomFileName(ids: readonly string[]): string {
+    if (ids.length === 1) {
+      const individual = latestState.individuals.find((entry) => entry.id === ids[0]);
+      if (individual) {
+        return buildGedcomFileName(individual.name);
+      }
+    }
+
+    return buildGedcomFileName(`Selected individuals (${ids.length})`);
   }
 
   function updateProfileSaveButtonState(): void {
@@ -1615,9 +1760,9 @@ export function initializeIndividualsPage(): void {
       nextSelection = exists ? individualId : null;
     }
 
-    const previousSelection = selectedIndividualId;
+    const previousSelection = activeIndividualId;
     const changed = nextSelection !== previousSelection;
-    selectedIndividualId = nextSelection;
+    activeIndividualId = nextSelection;
 
     if (changed && editFeedback) {
       editFeedback.textContent = "";
@@ -1674,6 +1819,24 @@ export function initializeIndividualsPage(): void {
 
     if (button) {
       handleIndividualAction(button);
+    }
+  });
+
+  list.addEventListener("change", (event) => {
+    const target = event.target;
+
+    if (!(target instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const individualId = target.dataset.individualId;
+    if (individualId) {
+      handleRowSelectionChange(individualId, target.checked);
+      return;
+    }
+
+    if (target.dataset.action === "toggle-all-individuals") {
+      handleToggleAllChange(target.checked);
     }
   });
 
@@ -1814,15 +1977,7 @@ export function initializeIndividualsPage(): void {
     }
 
     try {
-      const blob = new Blob([documentText], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${buildGedcomFileName(selected.name)}.ged`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      triggerGedcomDownload(documentText, buildGedcomFileName(selected.name));
       if (editFeedback) {
         editFeedback.textContent = "GEDCOM export generated.";
       }
@@ -1831,6 +1986,109 @@ export function initializeIndividualsPage(): void {
       if (editFeedback) {
         editFeedback.textContent = "Unable to generate GEDCOM download.";
       }
+    }
+  });
+
+  selectionClearButton.addEventListener("click", () => {
+    if (!selectedIndividualIds.size || bulkDeleting || bulkExporting) {
+      return;
+    }
+
+    selectedIndividualIds.clear();
+    clearSelectionFeedback();
+    renderIndividuals();
+  });
+
+  selectionDownloadButton.addEventListener("click", () => {
+    if (!selectedIndividualIds.size || bulkExporting) {
+      return;
+    }
+
+    const ids = [...selectedIndividualIds];
+    const documentText = generateGedcomDocument(latestState, { individualIds: ids });
+
+    if (!documentText) {
+      setSelectionFeedback("Unable to export GEDCOM for the selected individuals.");
+      return;
+    }
+
+    bulkExporting = true;
+    updateSelectionToolbar();
+
+    try {
+      const fileName = buildSelectionGedcomFileName(ids);
+      triggerGedcomDownload(documentText, fileName);
+      setSelectionFeedback(
+        ids.length === 1
+          ? "GEDCOM export generated."
+          : `GEDCOM export generated for ${ids.length} individuals.`,
+      );
+    } catch (error) {
+      console.error("Failed to generate GEDCOM download", error);
+      setSelectionFeedback("Unable to generate GEDCOM download.");
+    } finally {
+      bulkExporting = false;
+      updateSelectionToolbar();
+    }
+  });
+
+  selectionDeleteButton.addEventListener("click", async () => {
+    if (!selectedIndividualIds.size || bulkDeleting) {
+      return;
+    }
+
+    const ids = [...selectedIndividualIds];
+    const individuals = ids
+      .map((id) => latestState.individuals.find((entry) => entry.id === id))
+      .filter((entry): entry is typeof latestState.individuals[number] => Boolean(entry));
+
+    if (!individuals.length) {
+      selectedIndividualIds.clear();
+      clearSelectionFeedback();
+      renderIndividuals();
+      return;
+    }
+
+    const confirmationMessage =
+      individuals.length === 1
+        ? `Remove ${individuals[0].name}? This will also delete any linked records.`
+        : `Remove ${individuals.length} individuals? This will also delete any linked records.`;
+
+    const confirmed = window.confirm(confirmationMessage);
+
+    if (!confirmed) {
+      return;
+    }
+
+    bulkDeleting = true;
+    updateSelectionToolbar();
+    setSelectionFeedback(
+      individuals.length === 1
+        ? `Deleting ${individuals[0].name}…`
+        : `Deleting ${individuals.length} individuals…`,
+    );
+
+    try {
+      for (const id of ids) {
+        await deleteIndividual(id);
+      }
+
+      const successMessage =
+        individuals.length === 1
+          ? `Removed individual ${individuals[0].name}.`
+          : `Removed ${individuals.length} individuals.`;
+
+      selectedIndividualIds.clear();
+      setSelectionFeedback(successMessage);
+      renderIndividuals();
+    } catch (error) {
+      console.error("Failed to delete individuals", error);
+      selectedIndividualIds.clear();
+      setSelectionFeedback("Unable to delete selected individuals.");
+      renderIndividuals();
+    } finally {
+      bulkDeleting = false;
+      updateSelectionToolbar();
     }
   });
 
@@ -1899,10 +2157,19 @@ export function initializeIndividualsPage(): void {
 
   subscribe((state) => {
     latestState = state;
-    if (selectedIndividualId && !state.individuals.some((item) => item.id === selectedIndividualId)) {
+    const existingIds = new Set(state.individuals.map((item) => item.id));
+
+    for (const id of [...selectedIndividualIds]) {
+      if (!existingIds.has(id)) {
+        selectedIndividualIds.delete(id);
+      }
+    }
+
+    if (activeIndividualId && !existingIds.has(activeIndividualId)) {
       selectIndividual(null);
       return;
     }
+
     renderIndividuals();
     renderSelectedIndividual();
   });
@@ -1923,6 +2190,18 @@ function buildGedcomFileName(name: string): string {
   }
 
   return "individual";
+}
+
+function triggerGedcomDownload(documentText: string, fileName: string): void {
+  const blob = new Blob([documentText], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${fileName}.ged`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 function getIndividualsElements(): IndividualsElements | null {
@@ -1950,6 +2229,12 @@ function getIndividualsElements(): IndividualsElements | null {
   const workspaceSearchForm = document.getElementById("workspace-search-form");
   const workspaceSearchInput = document.getElementById("workspace-search");
   const workspaceSearchClear = document.getElementById("workspace-search-clear");
+  const selectionToolbar = document.getElementById("individual-selection-actions");
+  const selectionCount = document.getElementById("individual-selection-count");
+  const selectionFeedback = document.getElementById("individual-selection-feedback");
+  const selectionDownloadButton = document.getElementById("individual-selection-download");
+  const selectionDeleteButton = document.getElementById("individual-selection-delete");
+  const selectionClearButton = document.getElementById("individual-selection-clear");
 
   if (
     !(
@@ -1969,7 +2254,12 @@ function getIndividualsElements(): IndividualsElements | null {
       profileEditor instanceof HTMLDivElement &&
       profileFieldsContainer instanceof HTMLDivElement &&
       profileSaveButton instanceof HTMLButtonElement &&
-      workspaceSearchInput instanceof HTMLInputElement
+      workspaceSearchInput instanceof HTMLInputElement &&
+      selectionToolbar instanceof HTMLDivElement &&
+      selectionCount instanceof HTMLSpanElement &&
+      selectionDownloadButton instanceof HTMLButtonElement &&
+      selectionDeleteButton instanceof HTMLButtonElement &&
+      selectionClearButton instanceof HTMLButtonElement
     )
   ) {
     return null;
@@ -2001,5 +2291,11 @@ function getIndividualsElements(): IndividualsElements | null {
     workspaceSearchInput,
     workspaceSearchClear:
       workspaceSearchClear instanceof HTMLButtonElement ? workspaceSearchClear : null,
+    selectionToolbar,
+    selectionCount,
+    selectionFeedback: selectionFeedback instanceof HTMLSpanElement ? selectionFeedback : null,
+    selectionDownloadButton,
+    selectionDeleteButton,
+    selectionClearButton,
   };
 }
