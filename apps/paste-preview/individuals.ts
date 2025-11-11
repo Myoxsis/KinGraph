@@ -95,6 +95,13 @@ interface RecordCandidate {
   summary: string;
 }
 
+type IndividualLinkStatusFilter = "all" | "linked" | "unlinked";
+
+interface IndividualFilterState {
+  roleId: string;
+  linkStatus: IndividualLinkStatusFilter;
+}
+
 interface IndividualsElements {
   list: HTMLDivElement;
   createForm: HTMLFormElement;
@@ -120,6 +127,9 @@ interface IndividualsElements {
   workspaceSearchForm: HTMLFormElement | null;
   workspaceSearchInput: HTMLInputElement;
   workspaceSearchClear: HTMLButtonElement | null;
+  filtersForm: HTMLFormElement;
+  filterRoleSelect: HTMLSelectElement;
+  filterLinkStatusSelect: HTMLSelectElement;
   selectionToolbar: HTMLDivElement;
   selectionCount: HTMLSpanElement;
   selectionFeedback: HTMLSpanElement | null;
@@ -888,6 +898,9 @@ export function initializeIndividualsPage(): void {
     workspaceSearchForm,
     workspaceSearchInput,
     workspaceSearchClear,
+    filtersForm,
+    filterRoleSelect,
+    filterLinkStatusSelect,
     selectionToolbar,
     selectionCount,
     selectionFeedback,
@@ -908,6 +921,10 @@ export function initializeIndividualsPage(): void {
   let deletingIndividual = false;
   let bulkDeleting = false;
   let bulkExporting = false;
+  const individualFilters: IndividualFilterState = {
+    roleId: filterRoleSelect.value || "",
+    linkStatus: normalizeLinkStatusFilter(filterLinkStatusSelect.value),
+  };
 
   const maybeSearchHandle = initializeWorkspaceSearch({
     elements: {
@@ -932,6 +949,8 @@ export function initializeIndividualsPage(): void {
   const workspaceSearch = maybeSearchHandle;
 
   individualSearchQuery = workspaceSearch.getValue().toLowerCase();
+
+  populateRoleFilterOptions([...latestState.roles].sort((a, b) => a.label.localeCompare(b.label)));
 
   const fieldRenderers: FieldRenderer[] = PROFILE_FIELD_CONFIGS.map((config) =>
     createFieldRenderer(config, handleFieldInput, handleSuggestionApply),
@@ -1254,6 +1273,42 @@ export function initializeIndividualsPage(): void {
     return match ? match.label : null;
   }
 
+  function normalizeLinkStatusFilter(value: string): IndividualLinkStatusFilter {
+    if (value === "linked" || value === "unlinked") {
+      return value;
+    }
+
+    return "all";
+  }
+
+  function populateRoleFilterOptions(sortedRoles: ReturnType<typeof getState>["roles"]): void {
+    const desired = individualFilters.roleId;
+    const fragment = document.createDocumentFragment();
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = sortedRoles.length ? "All roles" : "No roles available";
+    fragment.appendChild(placeholder);
+
+    for (const role of sortedRoles) {
+      const option = document.createElement("option");
+      option.value = role.id;
+      option.textContent = role.label;
+      fragment.appendChild(option);
+    }
+
+    filterRoleSelect.replaceChildren(fragment);
+
+    if (desired && sortedRoles.some((role) => role.id === desired)) {
+      filterRoleSelect.value = desired;
+      individualFilters.roleId = desired;
+    } else {
+      filterRoleSelect.value = "";
+      individualFilters.roleId = "";
+    }
+
+    filterRoleSelect.disabled = sortedRoles.length === 0;
+  }
+
   function populateRoleSelectOptions(selected: typeof latestState.individuals[number] | null): void {
     const sortedRoles = [...latestState.roles].sort((a, b) => a.label.localeCompare(b.label));
     const placeholderText = sortedRoles.length ? "No role assigned" : "No roles available";
@@ -1287,7 +1342,27 @@ export function initializeIndividualsPage(): void {
     const editDesired = selected?.roleId ?? null;
     fillSelect(editRoleSelect, editDesired);
     editRoleSelect.disabled = !selected;
+
+    populateRoleFilterOptions(sortedRoles);
   }
+
+  filterRoleSelect.addEventListener("change", () => {
+    individualFilters.roleId = filterRoleSelect.value || "";
+    renderIndividuals();
+  });
+
+  filterLinkStatusSelect.addEventListener("change", () => {
+    individualFilters.linkStatus = normalizeLinkStatusFilter(filterLinkStatusSelect.value);
+    renderIndividuals();
+  });
+
+  filtersForm.addEventListener("reset", () => {
+    window.requestAnimationFrame(() => {
+      individualFilters.roleId = filterRoleSelect.value || "";
+      individualFilters.linkStatus = normalizeLinkStatusFilter(filterLinkStatusSelect.value);
+      renderIndividuals();
+    });
+  });
 
   function renderIndividuals(): void {
     const recordCount = latestState.records.length;
@@ -1336,32 +1411,53 @@ export function initializeIndividualsPage(): void {
       linkedRecordsByIndividual.set(record.individualId, existing);
     }
 
-    const filteredIndividuals = individualSearchQuery
-      ? sortedIndividuals.filter((individual) => {
-          const normalizedName = individual.name.toLowerCase();
-          if (normalizedName.includes(individualSearchQuery)) {
-            return true;
-          }
+    const searchQuery = individualSearchQuery;
+    const filteredIndividuals = sortedIndividuals.filter((individual) => {
+      const linked = linkedRecordsByIndividual.get(individual.id) ?? [];
 
-          if (individual.notes.toLowerCase().includes(individualSearchQuery)) {
-            return true;
-          }
+      if (individualFilters.roleId && individual.roleId !== individualFilters.roleId) {
+        return false;
+      }
 
-          const roleLabel = getRoleLabel(individual.roleId);
-          if (roleLabel && roleLabel.toLowerCase().includes(individualSearchQuery)) {
-            return true;
-          }
+      if (individualFilters.linkStatus === "linked" && linked.length === 0) {
+        return false;
+      }
 
-          const linked = linkedRecordsByIndividual.get(individual.id) ?? [];
-          return linked.some((stored) => (stored.summary || "").toLowerCase().includes(individualSearchQuery));
-        })
-      : sortedIndividuals;
+      if (individualFilters.linkStatus === "unlinked" && linked.length > 0) {
+        return false;
+      }
+
+      if (!searchQuery) {
+        return true;
+      }
+
+      const normalizedName = individual.name.toLowerCase();
+      if (normalizedName.includes(searchQuery)) {
+        return true;
+      }
+
+      if (individual.notes.toLowerCase().includes(searchQuery)) {
+        return true;
+      }
+
+      const roleLabel = getRoleLabel(individual.roleId);
+      if (roleLabel && roleLabel.toLowerCase().includes(searchQuery)) {
+        return true;
+      }
+
+      return linked.some((stored) => (stored.summary || "").toLowerCase().includes(searchQuery));
+    });
+
+    const hasActiveFilters =
+      Boolean(searchQuery) || Boolean(individualFilters.roleId) || individualFilters.linkStatus !== "all";
 
     if (!filteredIndividuals.length) {
       renderedIndividualIds = [];
       const empty = document.createElement("div");
       empty.className = "empty-state";
-      empty.textContent = "No individuals match your search.";
+      empty.textContent = hasActiveFilters
+        ? "No individuals match your search or filters."
+        : "No individuals yet. Save a record or create a person to get started.";
       list.replaceChildren(empty);
       updateSelectionToolbar();
       return;
@@ -2159,6 +2255,8 @@ export function initializeIndividualsPage(): void {
     latestState = state;
     const existingIds = new Set(state.individuals.map((item) => item.id));
 
+    populateRoleFilterOptions([...latestState.roles].sort((a, b) => a.label.localeCompare(b.label)));
+
     for (const id of [...selectedIndividualIds]) {
       if (!existingIds.has(id)) {
         selectedIndividualIds.delete(id);
@@ -2229,6 +2327,9 @@ function getIndividualsElements(): IndividualsElements | null {
   const workspaceSearchForm = document.getElementById("workspace-search-form");
   const workspaceSearchInput = document.getElementById("workspace-search");
   const workspaceSearchClear = document.getElementById("workspace-search-clear");
+  const filtersForm = document.getElementById("individuals-filters");
+  const filterRoleSelect = document.getElementById("individual-filter-role");
+  const filterLinkStatusSelect = document.getElementById("individual-filter-link-status");
   const selectionToolbar = document.getElementById("individual-selection-actions");
   const selectionCount = document.getElementById("individual-selection-count");
   const selectionFeedback = document.getElementById("individual-selection-feedback");
@@ -2255,6 +2356,9 @@ function getIndividualsElements(): IndividualsElements | null {
       profileFieldsContainer instanceof HTMLDivElement &&
       profileSaveButton instanceof HTMLButtonElement &&
       workspaceSearchInput instanceof HTMLInputElement &&
+      filtersForm instanceof HTMLFormElement &&
+      filterRoleSelect instanceof HTMLSelectElement &&
+      filterLinkStatusSelect instanceof HTMLSelectElement &&
       selectionToolbar instanceof HTMLDivElement &&
       selectionCount instanceof HTMLSpanElement &&
       selectionDownloadButton instanceof HTMLButtonElement &&
@@ -2291,6 +2395,9 @@ function getIndividualsElements(): IndividualsElements | null {
     workspaceSearchInput,
     workspaceSearchClear:
       workspaceSearchClear instanceof HTMLButtonElement ? workspaceSearchClear : null,
+    filtersForm,
+    filterRoleSelect,
+    filterLinkStatusSelect,
     selectionToolbar,
     selectionCount,
     selectionFeedback: selectionFeedback instanceof HTMLSpanElement ? selectionFeedback : null,

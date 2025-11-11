@@ -220,6 +220,25 @@
                       </button>
                     </div>
                   </div>
+                  <form id="individuals-filters" class="records-filters" autocomplete="off">
+                    <div class="filter-field">
+                      <label for="individual-filter-role">Role</label>
+                      <select id="individual-filter-role" name="role">
+                        <option value="">All roles</option>
+                      </select>
+                    </div>
+                    <div class="filter-field">
+                      <label for="individual-filter-link-status">Linked records</label>
+                      <select id="individual-filter-link-status" name="link-status">
+                        <option value="all">All individuals</option>
+                        <option value="linked">With linked records</option>
+                        <option value="unlinked">Without linked records</option>
+                      </select>
+                    </div>
+                    <div class="filter-actions">
+                      <button type="reset" class="button-secondary">Reset filters</button>
+                    </div>
+                  </form>
                   <div class="table-wrapper">
                     <div id="individuals-list" class="individuals-list"></div>
                   </div>
