@@ -6,6 +6,7 @@ import {
   createIndividual,
   createRecord,
   deleteRecord,
+  updateRecord,
   getState,
   subscribe,
   type StoredIndividual,
@@ -2124,6 +2125,33 @@ export function initializeRecordsPage(): void {
       }
 
       runExtraction({ trigger: "load", label: formatTimestamp(stored.createdAt) });
+    } else if (button.dataset.action === "edit-record-summary") {
+      const stored = latestState.records.find((record) => record.id === recordId);
+
+      if (!stored) {
+        return;
+      }
+
+      const defaultSummary = stored.summary || getRecordSummary(stored.record);
+      const input = window.prompt("Update saved record title", defaultSummary);
+
+      if (input === null) {
+        return;
+      }
+
+      const trimmed = input.trim();
+
+      if (trimmed === stored.summary) {
+        return;
+      }
+
+      try {
+        await updateRecord({ id: recordId, summary: trimmed });
+        setFeedback("Updated record title.");
+      } catch (error) {
+        console.error("Failed to update record summary", error);
+        setFeedback("Unable to update record.");
+      }
     } else if (button.dataset.action === "delete-record") {
       const confirmDelete = window.confirm("Remove this saved record? This cannot be undone.");
 
@@ -2799,6 +2827,13 @@ function buildTimelineFragment(
       loadButton.dataset.action = "load-record";
       loadButton.dataset.recordId = stored.id;
 
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.textContent = "Rename";
+      editButton.className = "button-secondary";
+      editButton.dataset.action = "edit-record-summary";
+      editButton.dataset.recordId = stored.id;
+
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.textContent = "Remove";
@@ -2806,7 +2841,7 @@ function buildTimelineFragment(
       deleteButton.dataset.action = "delete-record";
       deleteButton.dataset.recordId = stored.id;
 
-      actions.append(loadButton, deleteButton);
+      actions.append(loadButton, editButton, deleteButton);
       row.append(content, actions);
       body.appendChild(row);
     }
