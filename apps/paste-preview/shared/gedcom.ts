@@ -29,6 +29,14 @@ interface EventDetails {
   place?: string;
 }
 
+interface GedcomFamily {
+  key: string;
+  husbandId?: string;
+  wifeId?: string;
+  spouseIds: Set<string>;
+  childrenIds: Set<string>;
+}
+
 export function generateGedcomDocument(
   state: PersistedState,
   options: GedcomBuildOptions = {},
@@ -66,6 +74,29 @@ export function generateGedcomDocument(
   individuals.forEach((individual, index) => {
     const pointer = createPointer("I", individual.id, index + 1);
     individualPointers.set(individual.id, pointer);
+  });
+
+  const individualsById = new Map(individuals.map((individual) => [individual.id, individual] as const));
+  const families = buildFamilies(individuals, individualsById, individualPointers);
+  const familyPointers = new Map<string, string>();
+  const familiesBySpouse = new Map<string, GedcomFamily[]>();
+  const familiesByChild = new Map<string, GedcomFamily[]>();
+
+  families.forEach((family, index) => {
+    const pointer = createPointer("F", family.key, index + 1);
+    familyPointers.set(family.key, pointer);
+
+    for (const spouseId of family.spouseIds) {
+      const list = familiesBySpouse.get(spouseId) ?? [];
+      list.push(family);
+      familiesBySpouse.set(spouseId, list);
+    }
+
+    for (const childId of family.childrenIds) {
+      const list = familiesByChild.get(childId) ?? [];
+      list.push(family);
+      familiesByChild.set(childId, list);
+    }
   });
 
   for (const individual of individuals) {
@@ -160,6 +191,53 @@ export function generateGedcomDocument(
     for (const note of siblingNotes) {
       lines.push(`1 NOTE ${note}`);
     }
+
+    const spouseFamilies = familiesBySpouse.get(individual.id) ?? [];
+    for (const family of spouseFamilies) {
+      const familyPointer = familyPointers.get(family.key);
+      if (familyPointer) {
+        lines.push(`1 FAMS @${familyPointer}@`);
+      }
+    }
+
+    const childFamilies = familiesByChild.get(individual.id) ?? [];
+    for (const family of childFamilies) {
+      const familyPointer = familyPointers.get(family.key);
+      if (familyPointer) {
+        lines.push(`1 FAMC @${familyPointer}@`);
+      }
+    }
+  }
+
+  for (const family of families) {
+    const familyPointer = familyPointers.get(family.key);
+    if (!familyPointer) {
+      continue;
+    }
+
+    lines.push(`0 @${familyPointer}@ FAM`);
+
+    if (family.husbandId) {
+      const husbandPointer = individualPointers.get(family.husbandId);
+      if (husbandPointer) {
+        lines.push(`1 HUSB @${husbandPointer}@`);
+      }
+    }
+
+    if (family.wifeId) {
+      const wifePointer = individualPointers.get(family.wifeId);
+      if (wifePointer) {
+        lines.push(`1 WIFE @${wifePointer}@`);
+      }
+    }
+
+    const children = Array.from(family.childrenIds).sort();
+    for (const childId of children) {
+      const childPointer = individualPointers.get(childId);
+      if (childPointer) {
+        lines.push(`1 CHIL @${childPointer}@`);
+      }
+    }
   }
 
   lines.push("0 TRLR");
@@ -209,6 +287,98 @@ function buildNameValue(individual: StoredIndividual): string | null {
   }
 
   return `${given ?? ""} /${surname ?? ""}/`.trim();
+}
+
+function buildFamilies(
+  individuals: readonly StoredIndividual[],
+  individualsById: Map<string, StoredIndividual>,
+  pointers: Map<string, string>,
+): GedcomFamily[] {
+  const familyMap = new Map<string, GedcomFamily>();
+
+  const ensureFamily = (husbandId?: string, wifeId?: string): GedcomFamily => {
+    const normalizedHusband = husbandId && pointers.has(husbandId) ? husbandId : undefined;
+    const normalizedWife = wifeId && pointers.has(wifeId) ? wifeId : undefined;
+    const key = `${normalizedHusband ?? ""}|${normalizedWife ?? ""}`;
+    const existing = familyMap.get(key);
+    if (existing) {
+      return existing;
+    }
+    const created: GedcomFamily = {
+      key,
+      husbandId: normalizedHusband,
+      wifeId: normalizedWife,
+      spouseIds: new Set(),
+      childrenIds: new Set(),
+    };
+    if (normalizedHusband) {
+      created.spouseIds.add(normalizedHusband);
+    }
+    if (normalizedWife) {
+      created.spouseIds.add(normalizedWife);
+    }
+    familyMap.set(key, created);
+    return created;
+  };
+
+  for (const individual of individuals) {
+    const { father, mother } = individual.profile.linkedParents;
+    if (father || mother) {
+      const family = ensureFamily(father, mother);
+      family.childrenIds.add(individual.id);
+    }
+  }
+
+  for (const individual of individuals) {
+    for (const spouseId of individual.profile.linkedSpouses) {
+      const roles = assignSpouseRoles(individual.id, spouseId, individualsById);
+      const family = ensureFamily(roles.husbandId, roles.wifeId);
+      family.spouseIds.add(individual.id);
+      if (pointers.has(spouseId)) {
+        family.spouseIds.add(spouseId);
+      }
+      for (const childId of individual.profile.linkedChildren) {
+        if (pointers.has(childId)) {
+          family.childrenIds.add(childId);
+        }
+      }
+    }
+  }
+
+  return Array.from(familyMap.values());
+}
+
+function assignSpouseRoles(
+  primaryId: string,
+  spouseId: string,
+  individualsById: Map<string, StoredIndividual>,
+): { husbandId?: string; wifeId?: string } {
+  const primary = individualsById.get(primaryId);
+  const spouse = individualsById.get(spouseId);
+  const primarySex = primary?.profile.sex;
+  const spouseSex = spouse?.profile.sex;
+
+  if (primarySex === "M" && spouseSex === "F") {
+    return { husbandId: primaryId, wifeId: spouseId };
+  }
+  if (primarySex === "F" && spouseSex === "M") {
+    return { husbandId: spouseId, wifeId: primaryId };
+  }
+  if (primarySex === "M" && spouseSex !== "M") {
+    return { husbandId: primaryId, wifeId: spouseId };
+  }
+  if (spouseSex === "M" && primarySex !== "M") {
+    return { husbandId: spouseId, wifeId: primaryId };
+  }
+  if (primarySex === "F" && spouseSex !== "F") {
+    return { husbandId: spouseId, wifeId: primaryId };
+  }
+  if (spouseSex === "F" && primarySex !== "F") {
+    return { husbandId: primaryId, wifeId: spouseId };
+  }
+
+  const [first, second] = [primaryId, spouseId].sort();
+  return { husbandId: first, wifeId: second };
 }
 
 function appendEvent(lines: string[], tag: string, details: EventDetails): void {
