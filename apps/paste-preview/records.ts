@@ -687,7 +687,7 @@ export function initializeRecordsPage(): void {
     }
 
     if (!importQueue.length) {
-      setFeedback("No pending CSV imports.");
+      setFeedback("No pending imports.");
       updateImportQueueStatus();
       return;
     }
@@ -776,7 +776,10 @@ export function initializeRecordsPage(): void {
       }
     } else if (hasQueuedItems) {
       importQueueStatus.hidden = false;
-      importQueueStatus.textContent = `${queued.toLocaleString()} import item${queued === 1 ? "" : "s"} queued`;
+      const sourceLabel = importQueueSourceLabel ? ` from ${importQueueSourceLabel}` : "";
+      importQueueStatus.textContent = `${queued.toLocaleString()} import item${
+        queued === 1 ? "" : "s"
+      } queued${sourceLabel}`;
       importQueueProgress.hidden = true;
       importQueueProgress.textContent = "";
     } else {
@@ -1151,7 +1154,7 @@ export function initializeRecordsPage(): void {
     const totalRemaining = importQueue.length + (activeImportItem ? 1 : 0);
 
     if (totalRemaining === 0) {
-      setFeedback("No pending CSV imports.");
+      setFeedback("No pending imports.");
       updateImportQueueStatus();
       return;
     }
