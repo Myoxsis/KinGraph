@@ -75,6 +75,7 @@ interface FieldSuggestion {
   label: string;
   value: unknown;
   records: string[];
+  share?: number;
 }
 
 interface FieldRenderer {
@@ -82,8 +83,10 @@ interface FieldRenderer {
   container: HTMLDivElement;
   input: FieldInputElement;
   suggestionsContainer: HTMLDivElement;
+  suggestionActions: HTMLDivElement;
   helper: HTMLParagraphElement;
   suggestionButtons: { key: string; button: HTMLButtonElement }[];
+  majoritySuggestion: FieldSuggestion | null;
   setValue: (value: unknown) => void;
   setSuggestions: (suggestions: FieldSuggestion[], activeKey: string | null) => void;
   setActiveKey: (activeKey: string | null) => void;
@@ -317,10 +320,37 @@ function createFieldRenderer(
   suggestionsContainer.className = "field-suggestions";
   container.appendChild(suggestionsContainer);
 
+  const suggestionActions = document.createElement("div");
+  suggestionActions.className = "field-suggestion-actions";
+  suggestionActions.hidden = true;
+  container.appendChild(suggestionActions);
+
+  const consolidateButton = document.createElement("button");
+  consolidateButton.type = "button";
+  consolidateButton.className = "suggestion-action";
+  consolidateButton.hidden = true;
+  suggestionActions.appendChild(consolidateButton);
+
   const helper = document.createElement("p");
   helper.className = "field-helper";
   helper.hidden = true;
   container.appendChild(helper);
+
+  const updateMajorityAction = (activeKey: string | null) => {
+    const majoritySuggestion = renderer.majoritySuggestion;
+    if (majoritySuggestion && activeKey !== majoritySuggestion.key) {
+      const sharePercent = Math.round((majoritySuggestion.share ?? 0) * 100);
+      consolidateButton.textContent =
+        sharePercent > 0
+          ? `Consolidate majority (${sharePercent}%)`
+          : "Consolidate majority";
+      consolidateButton.hidden = false;
+      suggestionActions.hidden = false;
+    } else {
+      consolidateButton.hidden = true;
+      suggestionActions.hidden = true;
+    }
+  };
 
   if (input instanceof HTMLSelectElement) {
     input.addEventListener("change", () => onValueChange(renderer));
@@ -334,8 +364,10 @@ function createFieldRenderer(
     container,
     input,
     suggestionsContainer,
+    suggestionActions,
     helper,
     suggestionButtons: [],
+    majoritySuggestion: null,
     setValue(value) {
       applyValueToInput(config, input, value);
     },
@@ -348,6 +380,9 @@ function createFieldRenderer(
         message.className = "empty-message";
         message.textContent = "No values from linked records yet.";
         suggestionsContainer.appendChild(message);
+        renderer.majoritySuggestion = null;
+        consolidateButton.hidden = true;
+        suggestionActions.hidden = true;
         return;
       }
 
@@ -380,6 +415,10 @@ function createFieldRenderer(
         suggestionsContainer.appendChild(button);
       }
 
+      const majoritySuggestion = getMajoritySuggestion(config, suggestions);
+      renderer.majoritySuggestion = majoritySuggestion;
+      updateMajorityAction(activeKey);
+
       renderer.setActiveKey(activeKey);
     },
     setActiveKey(activeKey) {
@@ -390,6 +429,7 @@ function createFieldRenderer(
           button.classList.remove("is-active");
         }
       }
+      updateMajorityAction(activeKey);
     },
     setError(message) {
       if (message) {
@@ -403,6 +443,13 @@ function createFieldRenderer(
       }
     },
   };
+
+  consolidateButton.addEventListener("click", () => {
+    if (!renderer.majoritySuggestion) {
+      return;
+    }
+    onSuggestionApply(renderer, renderer.majoritySuggestion);
+  });
 
   return renderer;
 }
@@ -843,6 +890,7 @@ function buildFieldSuggestions(
   candidates: RecordCandidate[],
 ): FieldSuggestion[] {
   const groups = new Map<string, FieldSuggestion>();
+  let totalWithValue = 0;
 
   for (const candidate of candidates) {
     const value = getProfileFieldValue(candidate.profile, config.key);
@@ -850,6 +898,7 @@ function buildFieldSuggestions(
     if (!key) {
       continue;
     }
+    totalWithValue += 1;
 
     const label = formatFieldValue(config, value);
     const existing = groups.get(key);
@@ -865,7 +914,46 @@ function buildFieldSuggestions(
     }
   }
 
-  return Array.from(groups.values()).sort((a, b) => b.records.length - a.records.length);
+  const suggestions = Array.from(groups.values()).sort(
+    (a, b) => b.records.length - a.records.length,
+  );
+  if (totalWithValue > 0) {
+    for (const suggestion of suggestions) {
+      suggestion.share = suggestion.records.length / totalWithValue;
+    }
+  }
+  return suggestions;
+}
+
+function getMajoritySuggestion(
+  config: FieldConfig,
+  suggestions: FieldSuggestion[],
+): FieldSuggestion | null {
+  if (!isDateField(config.key)) {
+    return null;
+  }
+
+  const top = suggestions[0];
+  if (!top || !top.share) {
+    return null;
+  }
+
+  return top.share > 0.5 ? top : null;
+}
+
+function isDateField(key: ProfileFieldKey): boolean {
+  return (
+    key === "birth.raw" ||
+    key === "birth.year" ||
+    key === "birth.month" ||
+    key === "birth.day" ||
+    key === "birth.approx" ||
+    key === "death.raw" ||
+    key === "death.year" ||
+    key === "death.month" ||
+    key === "death.day" ||
+    key === "death.approx"
+  );
 }
 
 function recordToProfile(record: IndividualRecord): IndividualProfile {
