@@ -141,6 +141,7 @@ interface IndividualsElements {
   profileEditor: HTMLDivElement;
   profileFieldsContainer: HTMLDivElement;
   profileSaveButton: HTMLButtonElement;
+  profileConsolidateMajorityButton: HTMLButtonElement;
   profileFeedback: HTMLSpanElement | null;
   profileUpdatedAt: HTMLSpanElement | null;
   workspaceSearchForm: HTMLFormElement | null;
@@ -1003,6 +1004,7 @@ export function initializeIndividualsPage(): void {
     profileEditor,
     profileFieldsContainer,
     profileSaveButton,
+    profileConsolidateMajorityButton,
     profileFeedback,
     profileUpdatedAt,
     workspaceSearchForm,
@@ -1376,7 +1378,19 @@ export function initializeIndividualsPage(): void {
   profileFieldsContainer.replaceChildren(...fieldRenderers.map((renderer) => renderer.container));
   refreshRelationshipLinkers();
 
+  profileConsolidateMajorityButton.addEventListener("click", () => {
+    const targets = getMajorityConsolidationTargets();
+    if (!targets.length) {
+      return;
+    }
+
+    for (const target of targets) {
+      handleSuggestionApply(target.renderer, target.suggestion);
+    }
+  });
+
   updateProfileSaveButtonState();
+  updateMajorityConsolidateButton();
 
   function getSelectedIndividual(): typeof latestState.individuals[number] | null {
     if (!activeIndividualId) {
@@ -1924,6 +1938,49 @@ export function initializeIndividualsPage(): void {
     profileSaveButton.setAttribute("aria-busy", profileSaving ? "true" : "false");
   }
 
+  function getMajorityConsolidationTargets(): Array<{
+    renderer: FieldRenderer;
+    suggestion: FieldSuggestion;
+  }> {
+    const targets: Array<{ renderer: FieldRenderer; suggestion: FieldSuggestion }> = [];
+
+    for (const renderer of fieldRenderers) {
+      const suggestion = renderer.majoritySuggestion;
+      if (!suggestion || (suggestion.share ?? 0) < 1) {
+        continue;
+      }
+
+      const sanitized = sanitizeFieldValue(renderer.config.key, suggestion.value);
+      const currentValue = getProfileFieldValue(draftProfile, renderer.config.key);
+      if (areFieldValuesEqual(renderer.config, sanitized, currentValue)) {
+        continue;
+      }
+
+      targets.push({ renderer, suggestion });
+    }
+
+    return targets;
+  }
+
+  function updateMajorityConsolidateButton(): void {
+    const selected = getSelectedIndividual();
+    if (!selected) {
+      profileConsolidateMajorityButton.disabled = true;
+      profileConsolidateMajorityButton.textContent = "Consolidate 100% matches";
+      return;
+    }
+
+    const targets = getMajorityConsolidationTargets();
+    if (!targets.length) {
+      profileConsolidateMajorityButton.disabled = true;
+      profileConsolidateMajorityButton.textContent = "Consolidate 100% matches";
+      return;
+    }
+
+    profileConsolidateMajorityButton.disabled = false;
+    profileConsolidateMajorityButton.textContent = `Consolidate 100% matches (${targets.length})`;
+  }
+
   function markProfileDirty(): void {
     profileDirty = true;
     if (profileFeedback) {
@@ -1939,6 +1996,7 @@ export function initializeIndividualsPage(): void {
       renderer.setError(null);
     }
     refreshRelationshipLinkers();
+    updateMajorityConsolidateButton();
   }
 
   function refreshProfileSuggestions(): void {
@@ -1952,6 +2010,7 @@ export function initializeIndividualsPage(): void {
         serializeFieldValue(renderer.config, currentValue),
       );
     }
+    updateMajorityConsolidateButton();
   }
 
   function clearProfileEditor(): void {
@@ -1972,6 +2031,7 @@ export function initializeIndividualsPage(): void {
       profileFeedback.textContent = "";
     }
     refreshRelationshipLinkers();
+    updateMajorityConsolidateButton();
     updateProfileSaveButtonState();
   }
 
@@ -2017,6 +2077,7 @@ export function initializeIndividualsPage(): void {
     const activeKey = serializeFieldValue(renderer.config, getProfileFieldValue(draftProfile, renderer.config.key));
     renderer.setActiveKey(activeKey);
     updateProfileSaveButtonState();
+    updateMajorityConsolidateButton();
   }
 
   function handleSuggestionApply(renderer: FieldRenderer, suggestion: FieldSuggestion): void {
@@ -2030,6 +2091,7 @@ export function initializeIndividualsPage(): void {
     renderer.setActiveKey(serializeFieldValue(renderer.config, sanitized));
     renderer.setError(null);
     updateProfileSaveButtonState();
+    updateMajorityConsolidateButton();
   }
 
   function getLinkedRecordCandidates(individualId: string): RecordCandidate[] {
@@ -2559,6 +2621,7 @@ function getIndividualsElements(): IndividualsElements | null {
   const profileEditor = document.getElementById("individual-profile-editor");
   const profileFieldsContainer = document.getElementById("individual-profile-fields");
   const profileSaveButton = document.getElementById("save-profile-button");
+  const profileConsolidateMajorityButton = document.getElementById("profile-consolidate-majority");
   const profileFeedback = document.getElementById("profile-feedback");
   const profileUpdatedAt = document.getElementById("profile-updated-at");
   const workspaceSearchForm = document.getElementById("workspace-search-form");
@@ -2598,6 +2661,7 @@ function getIndividualsElements(): IndividualsElements | null {
       profileEditor instanceof HTMLDivElement &&
       profileFieldsContainer instanceof HTMLDivElement &&
       profileSaveButton instanceof HTMLButtonElement &&
+      profileConsolidateMajorityButton instanceof HTMLButtonElement &&
       workspaceSearchInput instanceof HTMLInputElement &&
       filtersForm instanceof HTMLFormElement &&
       filterNameInput instanceof HTMLInputElement &&
@@ -2638,6 +2702,7 @@ function getIndividualsElements(): IndividualsElements | null {
     profileEditor,
     profileFieldsContainer,
     profileSaveButton,
+    profileConsolidateMajorityButton,
     profileFeedback: profileFeedback instanceof HTMLSpanElement ? profileFeedback : null,
     profileUpdatedAt: profileUpdatedAt instanceof HTMLSpanElement ? profileUpdatedAt : null,
     workspaceSearchForm: workspaceSearchForm instanceof HTMLFormElement ? workspaceSearchForm : null,
