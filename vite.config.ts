@@ -27,6 +27,7 @@ export default defineConfig({
         records: resolve(appRoot, "index.html"),
         individuals: resolve(appRoot, "individuals.html"),
         tree: resolve(appRoot, "tree.html"),
+        network: resolve(appRoot, "network.html"),
         gedcom: resolve(appRoot, "gedcom.html"),
         settings: resolve(appRoot, "settings.html"),
       },
