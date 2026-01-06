@@ -1992,17 +1992,12 @@ body.modal-open {
   gap: clamp(24px, 4vw, 44px);
   width: min(100%, 1080px);
   margin: 0 auto;
-  padding: clamp(24px, 4vw, 48px);
-  border-radius: 32px;
-  background: linear-gradient(
-    180deg,
-    rgba(244, 247, 252, 0.9) 0%,
-    rgba(255, 255, 255, 0.96) 65%,
-    #ffffff 100%
-  );
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  box-shadow: 0 28px 68px rgba(15, 23, 42, 0.12);
-  --tree-connector-color: rgba(148, 163, 184, 0.45);
+  padding: clamp(18px, 3vw, 32px);
+  border-radius: 16px;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  --tree-connector-color: rgba(148, 163, 184, 0.6);
 }
 
 .genealogy-heading {
@@ -2091,7 +2086,7 @@ body.modal-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2px;
+  width: 1px;
   height: var(--branch-connector-length);
   background: transparent;
 }
@@ -2100,7 +2095,7 @@ body.modal-open {
 .genealogy-connector-down::before {
   content: "";
   position: absolute;
-  width: 2px;
+  width: 1px;
   height: 100%;
   background: var(--tree-connector-color);
   border-radius: 999px;
@@ -2109,13 +2104,7 @@ body.modal-open {
 
 .genealogy-connector-up::after,
 .genealogy-connector-down::after {
-  content: "";
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  border: 2px solid var(--tree-connector-color);
-  background: #ffffff;
+  content: none;
 }
 
 .genealogy-connector-up::after {
@@ -2129,32 +2118,19 @@ body.modal-open {
 .tree-person {
   position: relative;
   display: grid;
-  gap: 14px;
-  padding: clamp(18px, 2.6vw, 24px);
-  border-radius: 22px;
-  border: 1px solid var(--tree-card-border, rgba(148, 163, 184, 0.4));
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(248, 250, 252, 0.9) 100%
-  );
-  box-shadow: var(--tree-card-shadow, 0 22px 48px rgba(15, 23, 42, 0.12));
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--tree-card-border, rgba(148, 163, 184, 0.6));
+  background: #ffffff;
+  box-shadow: none;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   isolation: isolate;
   color: var(--tree-person-text, #1f2937);
 }
 
 .tree-person::after {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  background: radial-gradient(
-    circle at top left,
-    var(--tree-card-highlight, rgba(148, 163, 184, 0.16)),
-    transparent 55%
-  );
-  z-index: -1;
+  content: none;
 }
 
 .tree-person > * {
@@ -2167,8 +2143,8 @@ body.modal-open {
 }
 
 .tree-person:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--tree-card-shadow-hover, 0 28px 60px rgba(15, 23, 42, 0.16));
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .tree-person-header {
@@ -2194,7 +2170,7 @@ body.modal-open {
 }
 
 .tree-person strong {
-  font-size: 1.02rem;
+  font-size: 0.98rem;
   letter-spacing: -0.01em;
   line-height: 1.25;
   color: inherit;
@@ -2203,33 +2179,33 @@ body.modal-open {
 .tree-person-avatar {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 16px;
-  font-weight: 700;
-  font-size: 1rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
   color: var(--tree-person-accent, #334155);
   background: var(--tree-avatar-bg, rgba(248, 250, 252, 0.92));
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: none;
 }
 
 .tree-person-role {
   align-self: flex-start;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  background: var(--tree-card-role-bg, rgba(255, 255, 255, 0.7));
+  background: transparent;
   color: var(--tree-card-role-color, rgba(51, 65, 85, 0.7));
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.4);
 }
 
 .tree-lifespan {
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 500;
   color: var(--tree-person-accent, #334155);
   opacity: 0.8;
 }
@@ -2244,8 +2220,8 @@ body.modal-open {
 
 .tree-person-detail {
   position: relative;
-  padding-left: 18px;
-  font-size: 0.85rem;
+  padding-left: 14px;
+  font-size: 0.82rem;
   color: var(--tree-card-detail-color, rgba(51, 65, 85, 0.78));
   line-height: 1.45;
 }
@@ -2253,71 +2229,55 @@ body.modal-open {
 .tree-person-detail::before {
   content: "";
   position: absolute;
-  top: 0.6em;
+  top: 0.55em;
   left: 0;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 999px;
   background: var(--tree-person-accent, #334155);
   opacity: 0.4;
 }
 
 .tree-person--male {
-  --tree-card-border: rgba(59, 130, 246, 0.35);
-  --tree-card-shadow: 0 24px 54px rgba(37, 99, 235, 0.18);
-  --tree-card-shadow-hover: 0 28px 62px rgba(37, 99, 235, 0.24);
-  --tree-card-highlight: rgba(37, 99, 235, 0.16);
-  --tree-card-role-bg: rgba(219, 234, 254, 0.65);
+  --tree-card-border: rgba(59, 130, 246, 0.45);
   --tree-card-role-color: #1d4ed8;
   --tree-person-accent: #1d4ed8;
   --tree-card-detail-color: rgba(17, 56, 95, 0.76);
-  --tree-avatar-bg: rgba(219, 234, 254, 0.92);
+  --tree-avatar-bg: rgba(219, 234, 254, 0.65);
 }
 
 .tree-person--female {
-  --tree-card-border: rgba(236, 72, 153, 0.3);
-  --tree-card-shadow: 0 24px 52px rgba(236, 72, 153, 0.18);
-  --tree-card-shadow-hover: 0 30px 68px rgba(236, 72, 153, 0.24);
-  --tree-card-highlight: rgba(236, 72, 153, 0.16);
-  --tree-card-role-bg: rgba(251, 207, 232, 0.68);
+  --tree-card-border: rgba(236, 72, 153, 0.4);
   --tree-card-role-color: #be185d;
   --tree-person-accent: #be185d;
   --tree-card-detail-color: rgba(109, 26, 58, 0.78);
-  --tree-avatar-bg: rgba(251, 207, 232, 0.92);
+  --tree-avatar-bg: rgba(251, 207, 232, 0.65);
 }
 
 .tree-person--unknown {
-  --tree-card-border: rgba(129, 140, 248, 0.32);
-  --tree-card-shadow: 0 24px 52px rgba(129, 140, 248, 0.2);
-  --tree-card-shadow-hover: 0 30px 64px rgba(129, 140, 248, 0.26);
-  --tree-card-highlight: rgba(129, 140, 248, 0.18);
-  --tree-card-role-bg: rgba(224, 231, 255, 0.7);
+  --tree-card-border: rgba(129, 140, 248, 0.4);
   --tree-card-role-color: #4338ca;
   --tree-person-accent: #4338ca;
   --tree-card-detail-color: rgba(55, 48, 163, 0.78);
-  --tree-avatar-bg: rgba(224, 231, 255, 0.92);
+  --tree-avatar-bg: rgba(224, 231, 255, 0.65);
 }
 
 .tree-person--parent {
-  --tree-card-role-bg: rgba(255, 255, 255, 0.78);
+  --tree-card-role-color: rgba(51, 65, 85, 0.7);
 }
 
 .tree-person--child {
-  --tree-card-role-bg: rgba(255, 255, 255, 0.62);
+  --tree-card-role-color: rgba(51, 65, 85, 0.7);
 }
 
 .tree-person--focus {
-  --tree-card-border: rgba(217, 119, 6, 0.4);
-  --tree-card-shadow: 0 28px 64px rgba(217, 119, 6, 0.22);
-  --tree-card-shadow-hover: 0 32px 72px rgba(217, 119, 6, 0.26);
-  --tree-card-highlight: rgba(251, 191, 36, 0.2);
-  --tree-card-role-bg: rgba(253, 230, 138, 0.8);
-  --tree-card-role-color: #92400e;
-  --tree-person-accent: #92400e;
-  --tree-card-detail-color: rgba(124, 45, 18, 0.78);
-  --tree-avatar-bg: rgba(254, 243, 199, 0.92);
-  outline: 2px solid rgba(217, 119, 6, 0.45);
-  outline-offset: -6px;
+  --tree-card-border: rgba(37, 99, 235, 0.7);
+  --tree-card-role-color: #1d4ed8;
+  --tree-person-accent: #1d4ed8;
+  --tree-card-detail-color: rgba(30, 64, 175, 0.78);
+  --tree-avatar-bg: rgba(191, 219, 254, 0.7);
+  outline: 2px solid rgba(37, 99, 235, 0.55);
+  outline-offset: -4px;
 }
 
 .tree-empty {
