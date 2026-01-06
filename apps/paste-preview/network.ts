@@ -264,7 +264,8 @@ function layoutNetwork(
 
   const centerX = width / 2;
   const centerY = height / 2;
-  const radius = Math.min(width, height) * 0.34;
+  const radius = Math.min(width, height) * 0.38;
+  const recordRadius = radius * 0.62;
   const individualNodes = nodes.filter((node) => node.type === "individual");
   const recordNodes = nodes.filter((node) => node.type === "record");
   const unlinkedNode = nodes.find((node) => node.type === "unlinked");
@@ -290,10 +291,9 @@ function layoutNetwork(
       continue;
     }
 
-    const offsetDistance = 46;
     const angle = anchor.angle ?? 0;
-    const x = anchor.x + Math.cos(angle) * offsetDistance;
-    const y = anchor.y + Math.sin(angle) * offsetDistance;
+    const x = centerX + Math.cos(angle) * recordRadius;
+    const y = centerY + Math.sin(angle) * recordRadius;
     positionById.set(recordNode.id, { x, y });
   }
 
