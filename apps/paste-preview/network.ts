@@ -49,6 +49,11 @@ export function initializeNetworkPage(): void {
   let currentStage: HTMLDivElement | null = null;
   let currentSvg: SVGSVGElement | null = null;
   let currentNodesLayer: HTMLDivElement | null = null;
+  const panZoomState = {
+    offsetX: 0,
+    offsetY: 0,
+    scale: 1,
+  };
 
   const resizeObserver = new ResizeObserver(() => {
     if (currentStage) {
@@ -115,6 +120,9 @@ export function initializeNetworkPage(): void {
 
     container.appendChild(stage);
 
+    applyPanZoom(stage, panZoomState);
+    bindPanZoom(stage, panZoomState);
+
     currentStage = stage;
     currentSvg = svg;
     currentNodesLayer = nodesLayer;
@@ -130,6 +138,80 @@ export function initializeNetworkPage(): void {
   });
 
   renderNetwork();
+}
+
+function bindPanZoom(stage: HTMLDivElement, state: { offsetX: number; offsetY: number; scale: number }): void {
+  let isPanning = false;
+  let startX = 0;
+  let startY = 0;
+  let originX = 0;
+  let originY = 0;
+
+  stage.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    isPanning = true;
+    stage.classList.add("is-panning");
+    stage.setPointerCapture(event.pointerId);
+    startX = event.clientX;
+    startY = event.clientY;
+    originX = state.offsetX;
+    originY = state.offsetY;
+  });
+
+  stage.addEventListener("pointermove", (event) => {
+    if (!isPanning) {
+      return;
+    }
+
+    state.offsetX = originX + (event.clientX - startX);
+    state.offsetY = originY + (event.clientY - startY);
+    applyPanZoom(stage, state);
+  });
+
+  const stopPanning = (event: PointerEvent): void => {
+    if (!isPanning) {
+      return;
+    }
+
+    isPanning = false;
+    stage.classList.remove("is-panning");
+    stage.releasePointerCapture(event.pointerId);
+  };
+
+  stage.addEventListener("pointerup", stopPanning);
+  stage.addEventListener("pointercancel", stopPanning);
+  stage.addEventListener("pointerleave", stopPanning);
+
+  stage.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      const rect = stage.getBoundingClientRect();
+      const pointerX = event.clientX - rect.left;
+      const pointerY = event.clientY - rect.top;
+      const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+      const nextScale = clamp(state.scale * zoomFactor, 0.6, 2.5);
+      const scaleRatio = nextScale / state.scale;
+
+      state.offsetX = pointerX - scaleRatio * (pointerX - state.offsetX);
+      state.offsetY = pointerY - scaleRatio * (pointerY - state.offsetY);
+      state.scale = nextScale;
+
+      applyPanZoom(stage, state);
+    },
+    { passive: false },
+  );
+}
+
+function applyPanZoom(stage: HTMLDivElement, state: { offsetX: number; offsetY: number; scale: number }): void {
+  stage.style.transform = `translate(${state.offsetX}px, ${state.offsetY}px) scale(${state.scale})`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
 
 function buildNetworkGraph(state: ReturnType<typeof getState>): {
